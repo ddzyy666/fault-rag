@@ -26,4 +26,6 @@ Thumbs.db
 *.log
 data/
 uploads/
-
+*.db
+*.db-shm
+*.db-wal

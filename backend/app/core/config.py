@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
     debug: bool = True
+    database_url: str = "sqlite+aiosqlite:///./fault_rag.db"
+    database_echo: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

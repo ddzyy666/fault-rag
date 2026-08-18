@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -31,7 +32,11 @@ def register_exception_handlers(application: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=422,
-            content=error_content(422, "请求参数校验失败", exc.errors()),
+            content=error_content(
+                422,
+                "请求参数校验失败",
+                jsonable_encoder(exc.errors()),
+            ),
         )
 
     @application.exception_handler(Exception)
