@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +13,8 @@ class Settings(BaseSettings):
     debug: bool = True
     database_url: str = "sqlite+aiosqlite:///./fault_rag.db"
     database_echo: bool = False
+    upload_dir: Path = Path("uploads")
+    max_upload_size_bytes: int = 20 * 1024 * 1024
 
     model_config = SettingsConfigDict(
         env_file=".env",

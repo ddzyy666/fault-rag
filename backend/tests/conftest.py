@@ -3,6 +3,7 @@ from collections.abc import Iterator
 
 import pytest
 from app import models  # noqa: F401
+from app.core.config import settings
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
@@ -34,9 +35,12 @@ def client(tmp_path) -> Iterator[TestClient]:
 
     asyncio.run(create_tables())
     app.dependency_overrides[get_db] = override_get_db
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = tmp_path / "uploads"
 
     with TestClient(app) as test_client:
         yield test_client
 
+    settings.upload_dir = original_upload_dir
     app.dependency_overrides.pop(get_db, None)
     asyncio.run(test_engine.dispose())
