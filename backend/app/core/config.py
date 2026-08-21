@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     database_echo: bool = False
     upload_dir: Path = Path("uploads")
     max_upload_size_bytes: int = 20 * 1024 * 1024
+    default_chunk_size: int = 700
+    default_chunk_overlap: int = 100
+    min_chunk_size: int = 80
 
     model_config = SettingsConfigDict(
         env_file=".env",

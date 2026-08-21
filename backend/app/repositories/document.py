@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.document import Document, DocumentPage, DocumentStatus
+from app.models.document import Document, DocumentChunk, DocumentPage, DocumentStatus
 
 
 async def get_document(session: AsyncSession, document_id: UUID) -> Document | None:
@@ -92,6 +92,57 @@ async def list_document_pages(
     )
     items = list((await session.scalars(statement)).all())
     return items, total or 0
+
+
+async def get_all_document_pages(
+    session: AsyncSession,
+    document_id: UUID,
+) -> list[DocumentPage]:
+    """按页码读取分块所需的全部原始页面。"""
+    statement = (
+        select(DocumentPage)
+        .where(DocumentPage.document_id == document_id)
+        .order_by(DocumentPage.page_number)
+    )
+    return list((await session.scalars(statement)).all())
+
+
+async def replace_document_chunks(
+    session: AsyncSession,
+    document_id: UUID,
+    chunks: list[DocumentChunk],
+) -> None:
+    """清除旧切片并写入本次生成结果。"""
+    await session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
+    session.add_all(chunks)
+
+
+async def list_document_chunks(
+    session: AsyncSession,
+    document_id: UUID,
+    page: int,
+    page_size: int,
+) -> tuple[list[DocumentChunk], int]:
+    """分页读取文档切片。"""
+    condition = DocumentChunk.document_id == document_id
+    total = await session.scalar(select(func.count()).select_from(DocumentChunk).where(condition))
+    statement = (
+        select(DocumentChunk)
+        .where(condition)
+        .order_by(DocumentChunk.chunk_index)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = list((await session.scalars(statement)).all())
+    return items, total or 0
+
+
+async def clear_document_chunks(session: AsyncSession, document_id: UUID) -> int:
+    """删除指定文档的所有切片并返回删除数量。"""
+    result = await session.execute(
+        delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
+    )
+    return result.rowcount or 0  # type: ignore[attr-defined]
 
 
 async def delete_document(session: AsyncSession, document: Document) -> None:

@@ -10,12 +10,21 @@ from app.models.document import Document, DocumentStatus
 from app.repositories import document as repository
 from app.repositories.knowledge_base import get_knowledge_base
 from app.schemas.document import (
+    ChunkingRequest,
+    ChunkingResult,
+    DocumentChunkList,
+    DocumentChunkRead,
     DocumentList,
     DocumentPageList,
     DocumentPageRead,
     DocumentRead,
 )
 from app.schemas.response import ApiResponse
+from app.services.document_chunking import (
+    DocumentChunkingError,
+    chunk_document,
+    remove_document_chunks,
+)
 from app.services.document_processor import process_document
 from app.services.document_storage import (
     FileTooLargeError,
@@ -23,6 +32,7 @@ from app.services.document_storage import (
     delete_stored_file,
     save_upload,
 )
+from app.services.text_splitter import ChunkingConfig
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -146,7 +156,11 @@ async def get_document_content(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ApiResponse[DocumentPageList]:
     document = await require_document(document_id, session)
-    if document.status not in {DocumentStatus.PARSED, DocumentStatus.INDEXED}:
+    if document.status not in {
+        DocumentStatus.PARSED,
+        DocumentStatus.CHUNKED,
+        DocumentStatus.INDEXED,
+    }:
         raise HTTPException(status_code=409, detail=f"文档当前状态为 {document.status.value}")
 
     items, total = await repository.list_document_pages(session, document_id, page, page_size)
@@ -158,6 +172,87 @@ async def get_document_content(
             page_size=page_size,
         )
     )
+
+
+@router.post(
+    "/documents/{document_id}/chunks",
+    response_model=ApiResponse[ChunkingResult],
+    summary="生成或重建文档切片",
+)
+async def create_document_chunks(
+    document_id: UUID,
+    payload: ChunkingRequest,
+    session: DatabaseSession,
+) -> ApiResponse[ChunkingResult]:
+    document = await require_document(document_id, session)
+    if document.status in {
+        DocumentStatus.PENDING,
+        DocumentStatus.PARSING,
+        DocumentStatus.CHUNKING,
+    }:
+        raise HTTPException(status_code=409, detail=f"文档当前状态为 {document.status.value}")
+
+    config = ChunkingConfig(
+        chunk_size=payload.chunk_size,
+        chunk_overlap=payload.chunk_overlap,
+        min_chunk_size=payload.min_chunk_size,
+    )
+    try:
+        summary = await chunk_document(session, document, config)
+    except DocumentChunkingError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=ChunkingResult(
+            document_id=document.id,
+            status=document.status,
+            chunk_count=summary.chunk_count,
+            average_characters=summary.average_characters,
+            max_characters=summary.max_characters,
+            chunk_size=config.chunk_size,
+            chunk_overlap=config.chunk_overlap,
+            min_chunk_size=config.min_chunk_size,
+        )
+    )
+
+
+@router.get(
+    "/documents/{document_id}/chunks",
+    response_model=ApiResponse[DocumentChunkList],
+    summary="分页查看文档切片",
+)
+async def get_document_chunks(
+    document_id: UUID,
+    session: DatabaseSession,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ApiResponse[DocumentChunkList]:
+    await require_document(document_id, session)
+    items, total = await repository.list_document_chunks(session, document_id, page, page_size)
+    return ApiResponse(
+        data=DocumentChunkList(
+            items=[DocumentChunkRead.model_validate(item) for item in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
+@router.delete(
+    "/documents/{document_id}/chunks",
+    response_model=ApiResponse[None],
+    summary="删除文档切片",
+)
+async def delete_document_chunks(
+    document_id: UUID,
+    session: DatabaseSession,
+) -> ApiResponse[None]:
+    document = await require_document(document_id, session)
+    if document.page_count == 0:
+        raise HTTPException(status_code=409, detail="文档没有可恢复的解析文本")
+    deleted_count = await remove_document_chunks(session, document)
+    return ApiResponse(message=f"已删除 {deleted_count} 个切片", data=None)
 
 
 @router.delete(

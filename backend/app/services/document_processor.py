@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.document import Document, DocumentPage, DocumentStatus
+from app.models.document import Document, DocumentChunk, DocumentPage, DocumentStatus
 from app.services.document_parser import DocumentParseError, parse_document
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ async def process_document(session: AsyncSession, document: Document) -> Documen
 
     try:
         parsed_pages = await asyncio.to_thread(parse_document, document.storage_path)
+        await session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
         await session.execute(delete(DocumentPage).where(DocumentPage.document_id == document.id))
         session.add_all(
             [

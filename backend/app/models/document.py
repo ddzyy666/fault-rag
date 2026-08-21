@@ -29,6 +29,8 @@ class DocumentStatus(StrEnum):
     PENDING = "pending"
     PARSING = "parsing"
     PARSED = "parsed"
+    CHUNKING = "chunking"
+    CHUNKED = "chunked"
     INDEXED = "indexed"
     FAILED = "failed"
 

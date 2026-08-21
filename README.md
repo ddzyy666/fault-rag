@@ -17,6 +17,9 @@
 - PDF、DOCX、TXT、Markdown 文件上传与文本解析
 - 文件大小与扩展名校验、SHA-256 内容去重、安全文件名和隔离存储
 - 文档解析状态、按页原文查看和失败原因记录
+- Markdown 标题感知与通用递归文本分块
+- 可配置切片长度、重叠长度、最小切片长度和重新分块
+- 切片页码、章节标题、策略参数和估算Token数追踪
 - 接口与数据库隔离测试
 
 ## 数据模型
@@ -67,6 +70,9 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | `GET` | `/api/v1/knowledge-bases/{id}/documents` | 分页查询知识库文档 |
 | `GET` | `/api/v1/documents/{id}` | 查询文档详情与处理状态 |
 | `GET` | `/api/v1/documents/{id}/content` | 分页查看按页解析文本 |
+| `POST` | `/api/v1/documents/{id}/chunks` | 生成或重建文档切片 |
+| `GET` | `/api/v1/documents/{id}/chunks` | 分页查看文档切片 |
+| `DELETE` | `/api/v1/documents/{id}/chunks` | 删除切片并恢复为已解析状态 |
 | `DELETE` | `/api/v1/documents/{id}` | 删除文档、原始文件和解析内容 |
 
 支持的文件格式：
@@ -82,12 +88,43 @@ python -m uvicorn app.main:app --app-dir backend --reload
 文档处理状态：
 
 ```text
-pending → parsing → parsed → indexed
-                    └→ failed
+pending → parsing → parsed → chunking → chunked → indexed
+                    └──────────┴──────────→ failed
 ```
 
 当前上传请求会同步完成文本解析。后续生产化阶段可以将 `parsing` 部分迁移到任务队列，
 接口、数据库状态和解析服务不需要重新设计。
+
+## 文本分块
+
+默认参数：
+
+```text
+chunk_size       = 700 字符
+chunk_overlap    = 100 字符
+min_chunk_size   = 80 字符
+```
+
+Markdown文档优先按 `#` 到 `######` 标题划分语义章节，并把章节标题保留在对应切片中。
+其他格式优先按照段落、换行、句号、问号、分号等边界递归切分，最后才使用固定字符长度。
+纯标题和空白内容不会生成切片。
+
+生成切片：
+
+```http
+POST /api/v1/documents/{document_id}/chunks
+Content-Type: application/json
+
+{
+  "chunk_size": 700,
+  "chunk_overlap": 100,
+  "min_chunk_size": 80
+}
+```
+
+重复调用该接口会原子替换旧切片，方便比较不同参数。每条切片保留原始页码、章节标题、
+分块策略和参数。当前 `token_count` 是轻量估算值，Embedding阶段会使用实际模型的Tokenizer
+重新计算。
 
 当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
 后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。
