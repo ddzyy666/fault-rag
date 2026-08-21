@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated
 from uuid import UUID
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import VectorStoreDependency
 from app.db.database import get_db
 from app.repositories import knowledge_base as repository
 from app.schemas.knowledge_base import (
@@ -14,6 +16,7 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseUpdate,
 )
 from app.schemas.response import ApiResponse
+from app.services.vector_store import VectorStoreError
 
 router = APIRouter(prefix="/knowledge-bases")
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -126,7 +129,15 @@ async def update_knowledge_base(
 async def delete_knowledge_base(
     knowledge_base_id: UUID,
     session: DatabaseSession,
+    vector_store: VectorStoreDependency,
 ) -> ApiResponse[None]:
     knowledge_base = await require_knowledge_base(knowledge_base_id, session)
+    try:
+        await asyncio.to_thread(
+            vector_store.delete_knowledge_base,
+            str(knowledge_base_id),
+        )
+    except VectorStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     await repository.delete_knowledge_base(session, knowledge_base)
     return ApiResponse(message="知识库已删除", data=None)

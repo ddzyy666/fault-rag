@@ -137,6 +137,35 @@ async def list_document_chunks(
     return items, total or 0
 
 
+async def get_all_document_chunks(
+    session: AsyncSession,
+    document_id: UUID,
+) -> list[DocumentChunk]:
+    """按切片顺序读取向量化所需的全部内容。"""
+    statement = (
+        select(DocumentChunk)
+        .where(DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.chunk_index)
+    )
+    return list((await session.scalars(statement)).all())
+
+
+async def get_chunks_with_documents(
+    session: AsyncSession,
+    chunk_ids: list[UUID],
+) -> dict[UUID, tuple[DocumentChunk, Document]]:
+    """批量回查向量命中对应的SQL切片和文档。"""
+    if not chunk_ids:
+        return {}
+    statement = (
+        select(DocumentChunk, Document)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(DocumentChunk.id.in_(chunk_ids))
+    )
+    rows = (await session.execute(statement)).all()
+    return {chunk.id: (chunk, document) for chunk, document in rows}
+
+
 async def clear_document_chunks(session: AsyncSession, document_id: UUID) -> int:
     """删除指定文档的所有切片并返回删除数量。"""
     result = await session.execute(

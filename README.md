@@ -20,6 +20,9 @@
 - Markdown 标题感知与通用递归文本分块
 - 可配置切片长度、重叠长度、最小切片长度和重新分块
 - 切片页码、章节标题、策略参数和估算Token数追踪
+- FastEmbed 本地中文向量化（BAAI/bge-small-zh-v1.5）
+- Qdrant 本地持久化向量索引和知识库级语义检索
+- 文档索引重建、删除与重新分块时的向量同步清理
 - 接口与数据库隔离测试
 
 ## 数据模型
@@ -73,7 +76,15 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | `POST` | `/api/v1/documents/{id}/chunks` | 生成或重建文档切片 |
 | `GET` | `/api/v1/documents/{id}/chunks` | 分页查看文档切片 |
 | `DELETE` | `/api/v1/documents/{id}/chunks` | 删除切片并恢复为已解析状态 |
+| `POST` | `/api/v1/documents/{id}/index` | 将文档切片向量化并写入Qdrant |
+| `DELETE` | `/api/v1/documents/{id}/index` | 删除文档向量并恢复为已分块状态 |
 | `DELETE` | `/api/v1/documents/{id}` | 删除文档、原始文件和解析内容 |
+
+## 语义检索接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/knowledge-bases/{id}/search` | 在指定知识库内检索语义相关切片 |
 
 支持的文件格式：
 
@@ -88,8 +99,8 @@ python -m uvicorn app.main:app --app-dir backend --reload
 文档处理状态：
 
 ```text
-pending → parsing → parsed → chunking → chunked → indexed
-                    └──────────┴──────────→ failed
+pending → parsing → parsed → chunking → chunked → indexing → indexed
+                    └──────────┴───────────┴──────────→ failed
 ```
 
 当前上传请求会同步完成文本解析。后续生产化阶段可以将 `parsing` 部分迁移到任务队列，
@@ -123,8 +134,55 @@ Content-Type: application/json
 ```
 
 重复调用该接口会原子替换旧切片，方便比较不同参数。每条切片保留原始页码、章节标题、
-分块策略和参数。当前 `token_count` 是轻量估算值，Embedding阶段会使用实际模型的Tokenizer
-重新计算。
+分块策略和参数。当前 `token_count` 是轻量估算值。
+
+## 向量索引与语义检索
+
+项目默认使用 `BAAI/bge-small-zh-v1.5` 将切片转换为 512 维向量，并把向量写入本地
+Qdrant。首次建立索引时 FastEmbed 会下载模型文件，之后会复用本机缓存。
+
+```text
+用户问题 → 查询向量 → Qdrant相似度检索 → 切片ID → SQLite读取完整切片
+```
+
+- SQLite 是业务数据源，保存知识库、文档、完整切片以及处理状态。
+- Qdrant 保存切片向量和 `chunk_id`、`document_id`、`knowledge_base_id`、页码等定位字段。
+- 检索先在 Qdrant 找到最相似的切片，再根据切片ID从 SQLite读取完整内容。
+- 搜索条件强制包含知识库ID，避免不同知识库的数据混在一起。
+- 已索引文档重新分块、删除切片、删除文档或删除知识库时，会同步清理旧向量。
+
+为文档建立索引：
+
+```http
+POST /api/v1/documents/{document_id}/index
+```
+
+执行语义检索：
+
+```http
+POST /api/v1/knowledge-bases/{knowledge_base_id}/search
+Content-Type: application/json
+
+{
+  "query": "空压机排气温度过高怎么排查？",
+  "top_k": 5,
+  "score_threshold": 0.3
+}
+```
+
+本地开发默认把向量文件放在项目根目录 `qdrant_storage`。相关环境变量：
+
+```text
+EMBEDDING_MODEL_NAME=BAAI/bge-small-zh-v1.5
+EMBEDDING_DIMENSION=512
+EMBEDDING_BATCH_SIZE=32
+QDRANT_PATH=qdrant_storage
+QDRANT_COLLECTION=fault_diagnosis_chunks
+QDRANT_URL=
+```
+
+生产环境部署独立Qdrant后，只需设置 `QDRANT_URL`，如有鉴权再设置
+`QDRANT_API_KEY`；留空 `QDRANT_URL` 时使用本地持久化模式。
 
 当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
 后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。

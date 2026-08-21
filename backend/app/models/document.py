@@ -31,6 +31,7 @@ class DocumentStatus(StrEnum):
     PARSED = "parsed"
     CHUNKING = "chunking"
     CHUNKED = "chunked"
+    INDEXING = "indexing"
     INDEXED = "indexed"
     FAILED = "failed"
 

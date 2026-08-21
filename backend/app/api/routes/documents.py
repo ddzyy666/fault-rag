@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import VectorStoreDependency
 from app.db.database import get_db
 from app.models.document import Document, DocumentStatus
 from app.repositories import document as repository
@@ -25,6 +26,7 @@ from app.services.document_chunking import (
     chunk_document,
     remove_document_chunks,
 )
+from app.services.document_indexing import remove_document_index
 from app.services.document_processor import process_document
 from app.services.document_storage import (
     FileTooLargeError,
@@ -33,6 +35,7 @@ from app.services.document_storage import (
     save_upload,
 )
 from app.services.text_splitter import ChunkingConfig
+from app.services.vector_store import VectorStoreError
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -183,14 +186,22 @@ async def create_document_chunks(
     document_id: UUID,
     payload: ChunkingRequest,
     session: DatabaseSession,
+    vector_store: VectorStoreDependency,
 ) -> ApiResponse[ChunkingResult]:
     document = await require_document(document_id, session)
     if document.status in {
         DocumentStatus.PENDING,
         DocumentStatus.PARSING,
         DocumentStatus.CHUNKING,
+        DocumentStatus.INDEXING,
     }:
         raise HTTPException(status_code=409, detail=f"文档当前状态为 {document.status.value}")
+
+    if document.status == DocumentStatus.INDEXED:
+        try:
+            await remove_document_index(session, document, vector_store)
+        except VectorStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     config = ChunkingConfig(
         chunk_size=payload.chunk_size,
@@ -247,10 +258,16 @@ async def get_document_chunks(
 async def delete_document_chunks(
     document_id: UUID,
     session: DatabaseSession,
+    vector_store: VectorStoreDependency,
 ) -> ApiResponse[None]:
     document = await require_document(document_id, session)
     if document.page_count == 0:
         raise HTTPException(status_code=409, detail="文档没有可恢复的解析文本")
+    if document.status == DocumentStatus.INDEXED:
+        try:
+            await remove_document_index(session, document, vector_store)
+        except VectorStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     deleted_count = await remove_document_chunks(session, document)
     return ApiResponse(message=f"已删除 {deleted_count} 个切片", data=None)
 
@@ -263,8 +280,14 @@ async def delete_document_chunks(
 async def delete_document(
     document_id: UUID,
     session: DatabaseSession,
+    vector_store: VectorStoreDependency,
 ) -> ApiResponse[None]:
     document = await require_document(document_id, session)
+    if document.status == DocumentStatus.INDEXED:
+        try:
+            await remove_document_index(session, document, vector_store)
+        except VectorStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     storage_path = document.storage_path
     await repository.delete_document(session, document)
     delete_stored_file(storage_path)

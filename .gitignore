@@ -26,6 +26,7 @@ Thumbs.db
 *.log
 data/
 uploads/
+qdrant_storage/
 *.db
 *.db-shm
 *.db-wal

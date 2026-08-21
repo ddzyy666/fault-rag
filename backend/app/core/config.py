@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,13 @@ class Settings(BaseSettings):
     default_chunk_size: int = 700
     default_chunk_overlap: int = 100
     min_chunk_size: int = 80
+    embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
+    embedding_dimension: int = 512
+    embedding_batch_size: int = 32
+    qdrant_path: Path = Path("qdrant_storage")
+    qdrant_collection: str = "fault_diagnosis_chunks"
+    qdrant_url: str | None = None
+    qdrant_api_key: SecretStr | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
