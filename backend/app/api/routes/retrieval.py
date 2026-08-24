@@ -5,14 +5,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import EmbeddingDependency, VectorStoreDependency
+from app.api.dependencies import EmbeddingDependency, LLMDependency, VectorStoreDependency
 from app.api.routes.documents import require_document
+from app.core.config import settings
 from app.db.database import get_db
 from app.models.document import DocumentStatus
 from app.repositories.knowledge_base import get_knowledge_base
 from app.schemas.response import ApiResponse
 from app.schemas.retrieval import (
     IndexingResult,
+    LLMUsageRead,
+    RagAnswerResult,
+    RagAskRequest,
+    RagSource,
     SemanticSearchItem,
     SemanticSearchRequest,
     SemanticSearchResult,
@@ -24,6 +29,8 @@ from app.services.document_indexing import (
     remove_document_index,
 )
 from app.services.embedding import EmbeddingError
+from app.services.llm import LLMError
+from app.services.rag_answering import answer_with_knowledge_base
 from app.services.semantic_search import search_knowledge_base
 from app.services.vector_store import VectorStoreError
 
@@ -125,5 +132,50 @@ async def semantic_search(
             items=items,
             total=len(items),
             model_name=embedding_provider.model_name,
+        )
+    )
+
+
+@router.post(
+    "/knowledge-bases/{knowledge_base_id}/ask",
+    response_model=ApiResponse[RagAnswerResult],
+    summary="基于知识库生成故障诊断答案",
+)
+async def ask_knowledge_base(
+    knowledge_base_id: UUID,
+    payload: RagAskRequest,
+    session: DatabaseSession,
+    embedding_provider: EmbeddingDependency,
+    vector_store: VectorStoreDependency,
+    llm_provider: LLMDependency,
+) -> ApiResponse[RagAnswerResult]:
+    if await get_knowledge_base(session, knowledge_base_id) is None:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    try:
+        result = await answer_with_knowledge_base(
+            session,
+            knowledge_base_id=knowledge_base_id,
+            question=payload.question,
+            top_k=payload.top_k,
+            score_threshold=payload.score_threshold,
+            max_context_chars=settings.rag_max_context_chars,
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            llm_provider=llm_provider,
+        )
+    except (EmbeddingError, VectorStoreError, LLMError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=RagAnswerResult(
+            question=result.question,
+            answer=result.answer,
+            sources=[RagSource(**asdict(source)) for source in result.sources],
+            retrieved_count=len(result.sources),
+            embedding_model=result.embedding_model,
+            llm_model=result.llm_model,
+            llm_called=result.llm_called,
+            usage=LLMUsageRead(**asdict(result.usage)),
         )
     )

@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
 from app.services.embedding import get_embedding_provider
+from app.services.llm import LLMGeneration, LLMUsage, get_llm_provider
 from app.services.vector_store import QdrantVectorStore, get_vector_store
 from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
@@ -43,6 +44,30 @@ class FakeEmbeddingProvider:
         return self._embed(text)
 
 
+class FakeLLMProvider:
+    """测试专用模型，记录提示词并返回带引用的确定性答案。"""
+
+    model_name = "test-diagnostic-llm"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def generate(self, system_prompt: str, user_prompt: str) -> LLMGeneration:
+        self.calls.append((system_prompt, user_prompt))
+        return LLMGeneration(
+            content=(
+                "### 初步判断\n可能与冷却系统异常有关。[资料1]\n"
+                "### 排查步骤\n检查冷却器和冷却风扇。[资料1]\n"
+                "### 安全提醒\n停机、断电并泄压后由合格人员检查。"
+            ),
+            usage=LLMUsage(
+                prompt_tokens=120,
+                completion_tokens=48,
+                total_tokens=168,
+            ),
+        )
+
+
 @pytest.fixture
 def vector_store() -> Iterator[QdrantVectorStore]:
     """为每个测试创建一个独立的内存Qdrant。"""
@@ -52,7 +77,16 @@ def vector_store() -> Iterator[QdrantVectorStore]:
 
 
 @pytest.fixture
-def client(tmp_path, vector_store: QdrantVectorStore) -> Iterator[TestClient]:
+def llm_provider() -> FakeLLMProvider:
+    return FakeLLMProvider()
+
+
+@pytest.fixture
+def client(
+    tmp_path,
+    vector_store: QdrantVectorStore,
+    llm_provider: FakeLLMProvider,
+) -> Iterator[TestClient]:
     """为每个测试创建一个独立的临时 SQLite 数据库。"""
     database_path = tmp_path / "test.db"
     test_engine = create_async_engine(
@@ -76,6 +110,7 @@ def client(tmp_path, vector_store: QdrantVectorStore) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_embedding_provider] = FakeEmbeddingProvider
     app.dependency_overrides[get_vector_store] = lambda: vector_store
+    app.dependency_overrides[get_llm_provider] = lambda: llm_provider
     original_upload_dir = settings.upload_dir
     settings.upload_dir = tmp_path / "uploads"
 
@@ -86,4 +121,5 @@ def client(tmp_path, vector_store: QdrantVectorStore) -> Iterator[TestClient]:
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(get_embedding_provider, None)
     app.dependency_overrides.pop(get_vector_store, None)
+    app.dependency_overrides.pop(get_llm_provider, None)
     asyncio.run(test_engine.dispose())

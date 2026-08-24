@@ -51,3 +51,53 @@ class SemanticSearchResult(BaseModel):
     items: list[SemanticSearchItem]
     total: int
     model_name: str
+
+
+class RagAskRequest(BaseModel):
+    """基于知识库生成诊断答案的参数。"""
+
+    question: str = Field(min_length=1, max_length=1000)
+    top_k: int = Field(default=5, ge=1, le=10)
+    score_threshold: float | None = Field(default=0.3, ge=0.0, le=1.0)
+
+    @field_validator("question")
+    @classmethod
+    def normalize_question(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("诊断问题不能为空")
+        return normalized
+
+
+class RagSource(BaseModel):
+    """诊断答案引用的一条知识库原文。"""
+
+    citation: str
+    chunk_id: UUID
+    document_id: UUID
+    filename: str
+    content: str
+    score: float
+    page_number: int | None
+    section_title: str | None
+
+
+class LLMUsageRead(BaseModel):
+    """本次生成的Token用量。"""
+
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+
+
+class RagAnswerResult(BaseModel):
+    """带可追溯资料来源的RAG诊断结果。"""
+
+    question: str
+    answer: str
+    sources: list[RagSource]
+    retrieved_count: int
+    embedding_model: str
+    llm_model: str
+    llm_called: bool
+    usage: LLMUsageRead

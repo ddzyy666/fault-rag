@@ -23,6 +23,10 @@
 - FastEmbed 本地中文向量化（BAAI/bge-small-zh-v1.5）
 - Qdrant 本地持久化向量索引和知识库级语义检索
 - 文档索引重建、删除与重新分块时的向量同步清理
+- OpenAI兼容大模型接口和可替换模型配置
+- 基于检索原文的结构化故障诊断、资料编号引用和Token用量返回
+- 无有效检索资料时跳过大模型，避免无依据生成和额外费用
+- Prompt注入防护、资料不足声明和工业维修安全约束
 - 接口与数据库隔离测试
 
 ## 数据模型
@@ -85,6 +89,7 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge-bases/{id}/search` | 在指定知识库内检索语义相关切片 |
+| `POST` | `/api/v1/knowledge-bases/{id}/ask` | 检索资料并生成带引用的诊断答案 |
 
 支持的文件格式：
 
@@ -183,6 +188,56 @@ QDRANT_URL=
 
 生产环境部署独立Qdrant后，只需设置 `QDRANT_URL`，如有鉴权再设置
 `QDRANT_API_KEY`；留空 `QDRANT_URL` 时使用本地持久化模式。
+
+## RAG故障诊断问答
+
+`/ask` 接口在语义检索之上增加了提示词组装和大模型生成：
+
+```text
+故障问题 → 向量检索 → SQLite原文回查 → 编号资料上下文
+         → 大模型生成 → 结构化诊断答案 + 可追溯来源
+```
+
+诊断Prompt要求模型只依据知识库资料回答，在关键结论后使用 `[资料1]`、`[资料2]`
+标注来源，并按照“初步判断、可能原因、排查步骤、安全提醒”组织答案。知识库文档会被
+标记为不可信上下文，资料中的角色切换、提示词泄露或命令执行要求不会被当成系统指令。
+如果检索不到达到阈值的资料，服务不会调用收费模型，而是直接返回信息不足提示。
+
+项目调用兼容 Chat Completions 协议的非流式接口。默认配置使用硅基流动提供的
+DeepSeek模型，也可以通过相同环境变量切换到其他兼容服务。复制配置文件并填写自己的Key：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+```text
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_NAME=deepseek-ai/DeepSeek-V4-Flash
+LLM_API_KEY=填写自己的API_KEY
+LLM_TIMEOUT_SECONDS=60
+LLM_TEMPERATURE=0.2
+LLM_MAX_TOKENS=1200
+RAG_MAX_CONTEXT_CHARS=12000
+```
+
+`.env` 已被 Git 忽略，禁止将真实Key写入 `.env.example` 或提交到仓库。
+
+生成诊断答案：
+
+```http
+POST /api/v1/knowledge-bases/{knowledge_base_id}/ask
+Content-Type: application/json
+
+{
+  "question": "空压机E101高温停机应该怎么排查？",
+  "top_k": 5,
+  "score_threshold": 0.3
+}
+```
+
+响应中的 `answer` 是模型生成的诊断建议，`sources` 包含引用编号、原始切片、文件名、
+页码、章节和相似度，`usage` 包含本次生成的Token用量。调用前需要保证知识库中的文档
+已经完成分块和向量索引。
 
 当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
 后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。
