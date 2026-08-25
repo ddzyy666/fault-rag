@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedding import EmbeddingProvider
-from app.services.llm import LLMProvider, LLMUsage
+from app.services.llm import LLMChatMessage, LLMProvider, LLMUsage
 from app.services.rag_prompt import build_diagnostic_prompt
 from app.services.semantic_search import search_knowledge_base
 from app.services.vector_store import QdrantVectorStore
@@ -53,12 +53,14 @@ async def answer_with_knowledge_base(
     embedding_provider: EmbeddingProvider,
     vector_store: QdrantVectorStore,
     llm_provider: LLMProvider,
+    history: list[LLMChatMessage] | None = None,
+    retrieval_query: str | None = None,
 ) -> RagAnswer:
     """检索知识切片，构建受约束提示词并生成带来源的诊断答案。"""
     hits = await search_knowledge_base(
         session,
         knowledge_base_id,
-        question,
+        retrieval_query or question,
         top_k,
         score_threshold,
         embedding_provider,
@@ -79,6 +81,7 @@ async def answer_with_knowledge_base(
     generation = await llm_provider.generate(
         prompt.system_prompt,
         prompt.user_prompt,
+        history,
     )
     sources = [
         RagAnswerSource(

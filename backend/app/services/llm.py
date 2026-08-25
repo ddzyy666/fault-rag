@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 
@@ -28,13 +28,26 @@ class LLMGeneration:
     usage: LLMUsage
 
 
+@dataclass(frozen=True, slots=True)
+class LLMChatMessage:
+    """发送给兼容接口的一条历史对话消息。"""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class LLMProvider(Protocol):
     """RAG服务依赖的大模型最小接口。"""
 
     @property
     def model_name(self) -> str: ...
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> LLMGeneration: ...
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[LLMChatMessage] | None = None,
+    ) -> LLMGeneration: ...
 
 
 class OpenAICompatibleLLMProvider:
@@ -69,19 +82,26 @@ class OpenAICompatibleLLMProvider:
             return self._base_url
         return f"{self._base_url}/chat/completions"
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> LLMGeneration:
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[LLMChatMessage] | None = None,
+    ) -> LLMGeneration:
         if not self._base_url or not self.model_name:
             raise LLMError("LLM_BASE_URL或LLM_MODEL_NAME尚未配置")
 
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(
+            {"role": message.role, "content": message.content} for message in history or []
+        )
+        messages.append({"role": "user", "content": user_prompt})
         request_body = {
             "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            "messages": messages,
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
             "stream": False,

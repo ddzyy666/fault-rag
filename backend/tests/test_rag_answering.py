@@ -66,11 +66,12 @@ def test_rag_ask_returns_grounded_answer_and_sources(
     assert result["usage"]["total_tokens"] == 168
 
     assert len(llm_provider.calls) == 1  # type: ignore[attr-defined]
-    system_prompt, user_prompt = llm_provider.calls[0]  # type: ignore[attr-defined]
+    system_prompt, user_prompt, history = llm_provider.calls[0]  # type: ignore[attr-defined]
     assert "只能依据" in system_prompt
     assert "不可信数据" in system_prompt
     assert "[资料1]" in user_prompt
     assert "冷却器堵塞" in user_prompt
+    assert history == []
 
 
 def test_rag_ask_skips_llm_when_no_context(

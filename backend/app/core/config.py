@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.2
     llm_max_tokens: int = 1200
     rag_max_context_chars: int = 12000
+    conversation_history_messages: int = 10
 
     model_config = SettingsConfigDict(
         env_file=".env",

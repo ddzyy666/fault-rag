@@ -2,7 +2,7 @@ import asyncio
 import json
 
 import httpx
-from app.services.llm import OpenAICompatibleLLMProvider
+from app.services.llm import LLMChatMessage, OpenAICompatibleLLMProvider
 
 
 def test_openai_compatible_provider_builds_request_and_parses_usage() -> None:
@@ -34,16 +34,32 @@ def test_openai_compatible_provider_builds_request_and_parses_usage() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    result = asyncio.run(provider.generate("系统提示", "用户问题"))
+    result = asyncio.run(
+        provider.generate(
+            "系统提示",
+            "当前问题",
+            history=[
+                LLMChatMessage(role="user", content="上一轮问题"),
+                LLMChatMessage(role="assistant", content="上一轮回答"),
+            ],
+        )
+    )
 
     assert captured_request["url"] == "https://llm.example/v1/chat/completions"
     assert captured_request["authorization"] == "Bearer secret-key"
     request_body = captured_request["body"]
     assert isinstance(request_body, dict)
     assert request_body["model"] == "example-model"
-    assert request_body["messages"][0] == {  # type: ignore[index]
+    messages = request_body["messages"]
+    assert messages[0] == {  # type: ignore[index]
         "role": "system",
         "content": "系统提示",
     }
+    assert messages[1] == {"role": "user", "content": "上一轮问题"}  # type: ignore[index]
+    assert messages[2] == {  # type: ignore[index]
+        "role": "assistant",
+        "content": "上一轮回答",
+    }
+    assert messages[3] == {"role": "user", "content": "当前问题"}  # type: ignore[index]
     assert result.content == "诊断结果"
     assert result.usage.total_tokens == 14

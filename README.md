@@ -1,6 +1,6 @@
 # 智能故障诊断助手
 
-基于 RAG 的设备故障诊断系统。项目将逐步支持维修手册解析、混合检索、引用溯源、
+基于 RAG 的设备故障诊断系统，支持维修手册解析、向量检索、引用溯源、
 多轮故障诊断和结构化排查建议。
 
 ## 当前功能
@@ -27,6 +27,8 @@
 - 基于检索原文的结构化故障诊断、资料编号引用和Token用量返回
 - 无有效检索资料时跳过大模型，避免无依据生成和额外费用
 - Prompt注入防护、资料不足声明和工业维修安全约束
+- 诊断会话创建、查询、改名和删除
+- 多轮消息历史、首问自动标题、追问检索增强和回答引用持久化
 - 接口与数据库隔离测试
 
 ## 数据模型
@@ -90,6 +92,18 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge-bases/{id}/search` | 在指定知识库内检索语义相关切片 |
 | `POST` | `/api/v1/knowledge-bases/{id}/ask` | 检索资料并生成带引用的诊断答案 |
+
+## 诊断会话接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/conversations` | 创建诊断会话 |
+| `GET` | `/api/v1/conversations` | 分页查询会话，可按知识库过滤 |
+| `GET` | `/api/v1/conversations/{id}` | 查询会话详情 |
+| `PATCH` | `/api/v1/conversations/{id}` | 修改会话标题 |
+| `DELETE` | `/api/v1/conversations/{id}` | 删除会话及其全部消息 |
+| `GET` | `/api/v1/conversations/{id}/messages` | 分页查询会话消息 |
+| `POST` | `/api/v1/conversations/{id}/messages` | 发送消息并生成多轮RAG回答 |
 
 支持的文件格式：
 
@@ -218,6 +232,7 @@ LLM_TIMEOUT_SECONDS=60
 LLM_TEMPERATURE=0.2
 LLM_MAX_TOKENS=1200
 RAG_MAX_CONTEXT_CHARS=12000
+CONVERSATION_HISTORY_MESSAGES=10
 ```
 
 `.env` 已被 Git 忽略，禁止将真实Key写入 `.env.example` 或提交到仓库。
@@ -238,6 +253,41 @@ Content-Type: application/json
 响应中的 `answer` 是模型生成的诊断建议，`sources` 包含引用编号、原始切片、文件名、
 页码、章节和相似度，`usage` 包含本次生成的Token用量。调用前需要保证知识库中的文档
 已经完成分块和向量索引。
+
+## 多轮故障诊断
+
+创建会话时绑定一个知识库：
+
+```http
+POST /api/v1/conversations
+Content-Type: application/json
+
+{
+  "knowledge_base_id": "知识库UUID",
+  "title": "新诊断"
+}
+```
+
+向会话发送第一轮故障问题：
+
+```http
+POST /api/v1/conversations/{conversation_id}/messages
+Content-Type: application/json
+
+{
+  "question": "空压机E101高温停机应该怎么排查？",
+  "top_k": 5,
+  "score_threshold": 0.3
+}
+```
+
+继续调用同一接口即可追问，例如“那第二步具体检查什么？”。服务会把最近
+`CONVERSATION_HISTORY_MESSAGES` 条消息发送给模型，并把最近两个用户问题与当前问题
+组合后再做向量检索，避免省略设备或故障名称的追问失去语义。每轮用户消息、助手回答、
+引用原文快照都会保存到 SQLite；首次提问会自动把默认标题“新诊断”替换为问题摘要。
+
+删除知识库后历史会话仍然保留，`knowledge_base_id` 被置空，已有消息可以继续查看，但该
+会话不能再生成新的知识库诊断回答。
 
 当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
 后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。

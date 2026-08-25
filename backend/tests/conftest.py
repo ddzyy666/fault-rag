@@ -9,10 +9,11 @@ from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
 from app.services.embedding import get_embedding_provider
-from app.services.llm import LLMGeneration, LLMUsage, get_llm_provider
+from app.services.llm import LLMChatMessage, LLMGeneration, LLMUsage, get_llm_provider
 from app.services.vector_store import QdrantVectorStore, get_vector_store
 from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -50,10 +51,15 @@ class FakeLLMProvider:
     model_name = "test-diagnostic-llm"
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, list[LLMChatMessage]]] = []
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> LLMGeneration:
-        self.calls.append((system_prompt, user_prompt))
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[LLMChatMessage] | None = None,
+    ) -> LLMGeneration:
+        self.calls.append((system_prompt, user_prompt, history or []))
         return LLMGeneration(
             content=(
                 "### 初步判断\n可能与冷却系统异常有关。[资料1]\n"
@@ -93,6 +99,16 @@ def client(
         f"sqlite+aiosqlite:///{database_path.as_posix()}",
         poolclass=NullPool,
     )
+
+    @event.listens_for(test_engine.sync_engine, "connect")
+    def enable_test_sqlite_foreign_keys(
+        dbapi_connection: object,
+        _connection_record: object,
+    ) -> None:
+        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     test_session_factory = async_sessionmaker(
         bind=test_engine,
         expire_on_commit=False,
