@@ -1,5 +1,19 @@
+from app.main import app
+from app.services.reranker import RerankerError, get_reranker_provider
 from app.services.vector_store import QdrantVectorStore
 from fastapi.testclient import TestClient
+
+
+class FailingRerankerProvider:
+    model_name = "unavailable-reranker"
+
+    async def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        top_n: int,
+    ) -> list[object]:
+        raise RerankerError("模拟重排服务不可用")
 
 
 def create_knowledge_base(client: TestClient, name: str = "空压机语义检索库") -> str:
@@ -153,3 +167,67 @@ def test_delete_knowledge_base_cleans_vectors(
         exact=True,
     )
     assert after_delete.count == 0
+
+
+def test_search_supports_hybrid_scores_and_vector_comparison(client: TestClient) -> None:
+    knowledge_base_id = create_knowledge_base(client)
+    document_id = upload_and_chunk_document(client, knowledge_base_id)
+    assert client.post(f"/api/v1/documents/{document_id}/index").status_code == 200
+
+    hybrid = client.post(
+        f"/api/v1/knowledge-bases/{knowledge_base_id}/search",
+        json={"query": "E101高温停机", "top_k": 3, "score_threshold": 0.1},
+    )
+    assert hybrid.status_code == 200
+    hybrid_data = hybrid.json()["data"]
+    assert hybrid_data["retrieval_mode"] == "hybrid"
+    assert hybrid_data["reranker_applied"] is True
+    assert hybrid_data["reranker_model"] == "test-keyword-reranker"
+    first_item = hybrid_data["items"][0]
+    assert first_item["section_title"] == "高温停机 E101"
+    assert set(first_item["retrieval_sources"]) == {"vector", "keyword"}
+    assert first_item["vector_score"] is not None
+    assert first_item["keyword_score"] is not None
+    assert first_item["fusion_score"] is not None
+    assert first_item["rerank_score"] is not None
+
+    vector = client.post(
+        f"/api/v1/knowledge-bases/{knowledge_base_id}/search",
+        json={
+            "query": "E101高温停机",
+            "top_k": 3,
+            "score_threshold": 0.1,
+            "retrieval_mode": "vector",
+            "rerank": False,
+        },
+    )
+    assert vector.status_code == 200
+    vector_data = vector.json()["data"]
+    assert vector_data["retrieval_mode"] == "vector"
+    assert vector_data["reranker_applied"] is False
+    assert vector_data["items"][0]["retrieval_sources"] == ["vector"]
+    assert vector_data["items"][0]["keyword_score"] is None
+
+
+def test_search_falls_back_to_rrf_when_reranker_is_unavailable(client: TestClient) -> None:
+    knowledge_base_id = create_knowledge_base(client)
+    document_id = upload_and_chunk_document(client, knowledge_base_id)
+    assert client.post(f"/api/v1/documents/{document_id}/index").status_code == 200
+
+    original_override = app.dependency_overrides[get_reranker_provider]
+    app.dependency_overrides[get_reranker_provider] = FailingRerankerProvider
+    try:
+        response = client.post(
+            f"/api/v1/knowledge-bases/{knowledge_base_id}/search",
+            json={"query": "E101高温停机", "top_k": 3, "score_threshold": 0.1},
+        )
+    finally:
+        app.dependency_overrides[get_reranker_provider] = original_override
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["reranker_applied"] is False
+    assert data["reranker_model"] == "unavailable-reranker"
+    assert data["items"]
+    assert data["items"][0]["fusion_score"] is not None
+    assert data["items"][0]["rerank_score"] is None

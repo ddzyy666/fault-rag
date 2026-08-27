@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "case_id": "compressor-e101-001",
+      "query": "空压机E101高温停机应该先检查什么？",
+      "relevant_chunk_ids": [
+        "00000000-0000-0000-0000-000000000001"
+      ]
+    },
+    {
+      "case_id": "compressor-pressure-001",
+      "query": "空压机排气压力不足并且管路泄漏怎么排查？",
+      "relevant_chunk_ids": [
+        "00000000-0000-0000-0000-000000000002"
+      ]
+    }
+  ],
+  "top_k": 5,
+  "score_threshold": null
+}

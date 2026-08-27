@@ -1,10 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.routes import conversations, documents, health, knowledge_bases, retrieval
+from app.api.routes import (
+    conversations,
+    documents,
+    evaluations,
+    health,
+    knowledge_bases,
+    retrieval,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["系统状态"])
 api_router.include_router(knowledge_bases.router, tags=["知识库"])
 api_router.include_router(documents.router, tags=["文档"])
 api_router.include_router(retrieval.router, tags=["向量检索"])
+api_router.include_router(evaluations.router, tags=["RAG评估"])
 api_router.include_router(conversations.router, tags=["诊断会话"])

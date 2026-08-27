@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
@@ -5,7 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import EmbeddingDependency, LLMDependency, VectorStoreDependency
+from app.api.dependencies import (
+    EmbeddingDependency,
+    LLMDependency,
+    RerankerDependency,
+    VectorStoreDependency,
+)
+from app.core.config import settings
 from app.db.database import get_db
 from app.repositories import conversation as repository
 from app.repositories.knowledge_base import get_knowledge_base
@@ -21,9 +28,16 @@ from app.schemas.conversation import (
 )
 from app.schemas.response import ApiResponse
 from app.schemas.retrieval import LLMUsageRead, RagSource
-from app.services.conversation_diagnosis import diagnose_in_conversation
+from app.services.conversation_diagnosis import (
+    diagnose_in_conversation,
+    persist_conversation_answer,
+    prepare_conversation_context,
+)
 from app.services.embedding import EmbeddingError
 from app.services.llm import LLMError
+from app.services.rag_answering import prepare_knowledge_base_rag
+from app.services.rag_streaming import stream_prepared_rag
+from app.services.sse import ServerSentEventResponse, encode_sse, sse_response
 from app.services.vector_store import VectorStoreError
 
 router = APIRouter(prefix="/conversations")
@@ -170,6 +184,7 @@ async def create_conversation_message(
     embedding_provider: EmbeddingDependency,
     vector_store: VectorStoreDependency,
     llm_provider: LLMDependency,
+    reranker_provider: RerankerDependency,
 ) -> ApiResponse[ConversationReply]:
     conversation = await require_conversation(conversation_id, session)
     if conversation.knowledge_base_id is None:
@@ -184,6 +199,9 @@ async def create_conversation_message(
             embedding_provider=embedding_provider,
             vector_store=vector_store,
             llm_provider=llm_provider,
+            reranker_provider=reranker_provider,
+            retrieval_mode=payload.retrieval_mode,
+            rerank=payload.rerank,
         )
     except (EmbeddingError, VectorStoreError, LLMError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -199,5 +217,86 @@ async def create_conversation_message(
             llm_model=rag_answer.llm_model,
             llm_called=rag_answer.llm_called,
             usage=LLMUsageRead(**asdict(rag_answer.usage)),
+            retrieval_mode=rag_answer.retrieval_mode,
+            reranker_applied=rag_answer.reranker_applied,
+            reranker_model=rag_answer.reranker_model,
         )
     )
+
+
+@router.post(
+    "/{conversation_id}/messages/stream",
+    response_class=ServerSentEventResponse,
+    summary="发送消息并流式生成多轮诊断回答",
+)
+async def stream_conversation_message(
+    conversation_id: UUID,
+    payload: ConversationAskRequest,
+    session: DatabaseSession,
+    embedding_provider: EmbeddingDependency,
+    vector_store: VectorStoreDependency,
+    llm_provider: LLMDependency,
+    reranker_provider: RerankerDependency,
+) -> ServerSentEventResponse:
+    conversation = await require_conversation(conversation_id, session)
+    if conversation.knowledge_base_id is None:
+        raise HTTPException(status_code=409, detail="会话关联的知识库已被删除")
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield encode_sse(
+            "retrieval_started",
+            {
+                "conversation_id": conversation_id,
+                "question": payload.question,
+                "top_k": payload.top_k,
+            },
+        )
+        try:
+            context = await prepare_conversation_context(
+                session,
+                conversation,
+                payload.question,
+            )
+            prepared = await prepare_knowledge_base_rag(
+                session,
+                knowledge_base_id=conversation.knowledge_base_id,
+                question=payload.question,
+                retrieval_query=context.retrieval_query,
+                top_k=payload.top_k,
+                score_threshold=payload.score_threshold,
+                max_context_chars=settings.rag_max_context_chars,
+                embedding_provider=embedding_provider,
+                vector_store=vector_store,
+                reranker_provider=reranker_provider,
+                retrieval_mode=payload.retrieval_mode,
+                rerank=payload.rerank,
+            )
+            async for update in stream_prepared_rag(
+                prepared,
+                llm_provider,
+                context.history,
+            ):
+                if update.event == "completed" and update.answer is not None:
+                    exchange = await persist_conversation_answer(
+                        session,
+                        conversation,
+                        question=payload.question,
+                        rag_answer=update.answer,
+                    )
+                    completed_data = {
+                        **update.data,
+                        "conversation_id": conversation.id,
+                        "user_message_id": exchange.user_message.id,
+                        "assistant_message_id": exchange.assistant_message.id,
+                    }
+                    yield encode_sse("completed", completed_data)
+                else:
+                    yield encode_sse(update.event, update.data)
+        except (EmbeddingError, VectorStoreError, LLMError) as exc:
+            await session.rollback()
+            yield encode_sse("error", {"message": str(exc)})
+        except Exception:
+            await session.rollback()
+            yield encode_sse("error", {"message": "多轮流式诊断生成失败"})
+
+    return sse_response(event_stream())

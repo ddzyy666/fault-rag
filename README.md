@@ -1,6 +1,6 @@
 # 智能故障诊断助手
 
-基于 RAG 的设备故障诊断系统，支持维修手册解析、向量检索、引用溯源、
+基于 RAG 的设备故障诊断系统，支持维修手册解析、混合检索、引用溯源、
 多轮故障诊断和结构化排查建议。
 
 ## 当前功能
@@ -22,6 +22,9 @@
 - 切片页码、章节标题、策略参数和估算Token数追踪
 - FastEmbed 本地中文向量化（BAAI/bge-small-zh-v1.5）
 - Qdrant 本地持久化向量索引和知识库级语义检索
+- SQLite切片上的BM25关键词检索、向量/BM25双路召回和RRF结果融合
+- SiliconFlow中文重排模型，可关闭、可替换，调用失败时自动回退到RRF结果
+- 检索评估集、三种检索方案自动对比及Hit Rate、Recall、MRR、nDCG和延迟指标
 - 文档索引重建、删除与重新分块时的向量同步清理
 - OpenAI兼容大模型接口和可替换模型配置
 - 基于检索原文的结构化故障诊断、资料编号引用和Token用量返回
@@ -29,6 +32,7 @@
 - Prompt注入防护、资料不足声明和工业维修安全约束
 - 诊断会话创建、查询、改名和删除
 - 多轮消息历史、首问自动标题、追问检索增强和回答引用持久化
+- 单轮与多轮SSE流式回答、命名事件协议和完成后原子落库
 - 接口与数据库隔离测试
 
 ## 数据模型
@@ -86,12 +90,14 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | `DELETE` | `/api/v1/documents/{id}/index` | 删除文档向量并恢复为已分块状态 |
 | `DELETE` | `/api/v1/documents/{id}` | 删除文档、原始文件和解析内容 |
 
-## 语义检索接口
+## 检索与问答接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge-bases/{id}/search` | 在指定知识库内检索语义相关切片 |
 | `POST` | `/api/v1/knowledge-bases/{id}/ask` | 检索资料并生成带引用的诊断答案 |
+| `POST` | `/api/v1/knowledge-bases/{id}/ask/stream` | 流式生成单轮诊断答案 |
+| `POST` | `/api/v1/knowledge-bases/{id}/evaluations/retrieval` | 批量评估并对比检索方案 |
 
 ## 诊断会话接口
 
@@ -104,6 +110,7 @@ python -m uvicorn app.main:app --app-dir backend --reload
 | `DELETE` | `/api/v1/conversations/{id}` | 删除会话及其全部消息 |
 | `GET` | `/api/v1/conversations/{id}/messages` | 分页查询会话消息 |
 | `POST` | `/api/v1/conversations/{id}/messages` | 发送消息并生成多轮RAG回答 |
+| `POST` | `/api/v1/conversations/{id}/messages/stream` | 发送消息并流式生成多轮回答 |
 
 支持的文件格式：
 
@@ -155,18 +162,23 @@ Content-Type: application/json
 重复调用该接口会原子替换旧切片，方便比较不同参数。每条切片保留原始页码、章节标题、
 分块策略和参数。当前 `token_count` 是轻量估算值。
 
-## 向量索引与语义检索
+## 向量索引与混合检索
 
 项目默认使用 `BAAI/bge-small-zh-v1.5` 将切片转换为 512 维向量，并把向量写入本地
 Qdrant。首次建立索引时 FastEmbed 会下载模型文件，之后会复用本机缓存。
 
 ```text
-用户问题 → 查询向量 → Qdrant相似度检索 → 切片ID → SQLite读取完整切片
+                         ┌→ Qdrant向量召回 ─┐
+用户问题 → 候选切片召回 ┤                  ├→ RRF融合 → Reranker重排 → Top K
+                         └→ SQLite BM25 ───┘
 ```
 
 - SQLite 是业务数据源，保存知识库、文档、完整切片以及处理状态。
 - Qdrant 保存切片向量和 `chunk_id`、`document_id`、`knowledge_base_id`、页码等定位字段。
-- 检索先在 Qdrant 找到最相似的切片，再根据切片ID从 SQLite读取完整内容。
+- 向量召回负责理解近义表达，BM25负责精确匹配故障码、型号和专业术语。
+- 两路候选使用RRF按排名融合，不要求两种检索分数处于同一量纲。
+- 融合结果默认交给SiliconFlow的Reranker做精排；服务异常时自动使用RRF结果继续回答。
+- 最终根据切片ID从SQLite读取完整内容，并返回每一路的分数和命中来源。
 - 搜索条件强制包含知识库ID，避免不同知识库的数据混在一起。
 - 已索引文档重新分块、删除切片、删除文档或删除知识库时，会同步清理旧向量。
 
@@ -185,9 +197,15 @@ Content-Type: application/json
 {
   "query": "空压机排气温度过高怎么排查？",
   "top_k": 5,
-  "score_threshold": 0.3
+  "score_threshold": 0.3,
+  "retrieval_mode": "hybrid",
+  "rerank": true
 }
 ```
+
+`retrieval_mode` 可取 `hybrid`（默认）或 `vector`。设置为 `vector` 且将 `rerank`
+设为 `false`，可以与原始向量检索做效果对比。响应会返回 `vector_score`、
+`keyword_score`、`fusion_score`、`rerank_score`、`retrieval_sources` 以及本次是否真正执行重排。
 
 本地开发默认把向量文件放在项目根目录 `qdrant_storage`。相关环境变量：
 
@@ -198,18 +216,70 @@ EMBEDDING_BATCH_SIZE=32
 QDRANT_PATH=qdrant_storage
 QDRANT_COLLECTION=fault_diagnosis_chunks
 QDRANT_URL=
+RETRIEVAL_CANDIDATE_MULTIPLIER=4
+RRF_K=60
 ```
 
 生产环境部署独立Qdrant后，只需设置 `QDRANT_URL`，如有鉴权再设置
 `QDRANT_API_KEY`；留空 `QDRANT_URL` 时使用本地持久化模式。
+
+## RAG检索效果评估
+
+项目可以在同一组人工标注问题上自动对比以下三种检索方案：
+
+```text
+vector          = 纯向量检索
+hybrid_rrf      = 向量 + BM25 + RRF
+hybrid_rerank   = 向量 + BM25 + RRF + Reranker
+```
+
+先通过 `GET /api/v1/documents/{document_id}/chunks?page_size=100` 查看文档切片，人工为每个
+问题选择真正相关的 `chunk_id`，形成评估集。项目提供了
+[`sample_evaluations/air_compressor_retrieval.sample.json`](sample_evaluations/air_compressor_retrieval.sample.json)
+作为格式参考，其中的示例UUID必须替换为当前知识库的真实切片ID。
+
+执行评估：
+
+```http
+POST /api/v1/knowledge-bases/{knowledge_base_id}/evaluations/retrieval
+Content-Type: application/json
+
+{
+  "cases": [
+    {
+      "case_id": "compressor-e101-001",
+      "query": "空压机E101高温停机应该先检查什么？",
+      "relevant_chunk_ids": ["真实相关切片UUID"]
+    }
+  ],
+  "top_k": 5,
+  "score_threshold": null
+}
+```
+
+接口返回每条问题的检索排名与以下聚合指标：
+
+| 指标 | 含义 |
+| --- | --- |
+| `hit_rate_at_k` | 前K条中至少命中一个相关切片的问题比例 |
+| `precision_at_k` | 前K条结果中相关切片所占比例 |
+| `recall_at_k` | 人工标注的相关切片被召回的比例 |
+| `mrr` | 第一个相关切片排名倒数的平均值，越接近1越靠前 |
+| `ndcg_at_k` | 综合考虑多个相关切片及其排名位置的归一化分数 |
+| `average_latency_ms` / `p95_latency_ms` | 平均耗时和95分位耗时 |
+
+响应中的 `best_variant` 优先按MRR、Recall和nDCG选择表现最好的方案，在质量相同时选择
+平均延迟更低的方案。评估集中的切片必须属于当前知识库且文档已经建立索引，否则接口会
+拒绝评估，避免错误标注产生虚假指标。默认包含Reranker方案，因此使用真实配置运行时会
+调用Rerank服务；如只想比较本地检索，可在请求的 `variants` 中排除该方案。
 
 ## RAG故障诊断问答
 
 `/ask` 接口在语义检索之上增加了提示词组装和大模型生成：
 
 ```text
-故障问题 → 向量检索 → SQLite原文回查 → 编号资料上下文
-         → 大模型生成 → 结构化诊断答案 + 可追溯来源
+故障问题 → 混合召回 → RRF融合 → Reranker重排 → SQLite原文回查
+         → 编号资料上下文 → 大模型生成 → 结构化诊断答案 + 可追溯来源
 ```
 
 诊断Prompt要求模型只依据知识库资料回答，在关键结论后使用 `[资料1]`、`[资料2]`
@@ -217,7 +287,7 @@ QDRANT_URL=
 标记为不可信上下文，资料中的角色切换、提示词泄露或命令执行要求不会被当成系统指令。
 如果检索不到达到阈值的资料，服务不会调用收费模型，而是直接返回信息不足提示。
 
-项目调用兼容 Chat Completions 协议的非流式接口。默认配置使用硅基流动提供的
+项目调用兼容 Chat Completions 协议的流式与非流式接口。默认配置使用硅基流动提供的
 DeepSeek模型，也可以通过相同环境变量切换到其他兼容服务。复制配置文件并填写自己的Key：
 
 ```powershell
@@ -233,7 +303,15 @@ LLM_TEMPERATURE=0.2
 LLM_MAX_TOKENS=1200
 RAG_MAX_CONTEXT_CHARS=12000
 CONVERSATION_HISTORY_MESSAGES=10
+RERANKER_ENABLED=true
+RERANKER_BASE_URL=https://api.siliconflow.cn/v1
+RERANKER_MODEL_NAME=BAAI/bge-reranker-v2-m3
+RERANKER_API_KEY=
+RERANKER_TIMEOUT_SECONDS=30
 ```
+
+`RERANKER_API_KEY` 留空时会复用 `LLM_API_KEY`。关闭 `RERANKER_ENABLED` 或在请求中传入
+`"rerank": false`，服务会直接使用RRF融合结果，不调用重排接口。
 
 `.env` 已被 Git 忽略，禁止将真实Key写入 `.env.example` 或提交到仓库。
 
@@ -246,7 +324,9 @@ Content-Type: application/json
 {
   "question": "空压机E101高温停机应该怎么排查？",
   "top_k": 5,
-  "score_threshold": 0.3
+  "score_threshold": 0.3,
+  "retrieval_mode": "hybrid",
+  "rerank": true
 }
 ```
 
@@ -283,14 +363,63 @@ Content-Type: application/json
 
 继续调用同一接口即可追问，例如“那第二步具体检查什么？”。服务会把最近
 `CONVERSATION_HISTORY_MESSAGES` 条消息发送给模型，并把最近两个用户问题与当前问题
-组合后再做向量检索，避免省略设备或故障名称的追问失去语义。每轮用户消息、助手回答、
+组合后再做混合检索，避免省略设备或故障名称的追问失去语义。每轮用户消息、助手回答、
 引用原文快照都会保存到 SQLite；首次提问会自动把默认标题“新诊断”替换为问题摘要。
 
 删除知识库后历史会话仍然保留，`knowledge_base_id` 被置空，已有消息可以继续查看，但该
 会话不能再生成新的知识库诊断回答。
 
+## SSE流式回答
+
+流式接口使用 `text/event-stream` 返回UTF-8 JSON事件：
+
+| 事件 | 含义 |
+| --- | --- |
+| `retrieval_started` | 开始混合检索知识库 |
+| `sources` | 返回本次回答使用的编号资料 |
+| `answer_delta` | 返回一段新增的模型正文 |
+| `completed` | 回答完整结束，包含完整正文、模型和Token统计 |
+| `error` | 检索、模型调用或消息保存失败 |
+
+多轮流的 `completed` 事件还包含 `conversation_id`、`user_message_id` 和
+`assistant_message_id`。只有收到上游模型的完整回答后，用户消息、助手消息和引用才会在
+同一事务中写入SQLite；模型流中断或客户端取消请求时不会保存半截答案。
+
+PowerShell测试示例：
+
+```powershell
+curl.exe -N -X POST `
+  "http://127.0.0.1:8000/api/v1/conversations/{conversation_id}/messages/stream" `
+  -H "Content-Type: application/json" `
+  -d '{"question":"空压机E101高温停机怎么排查？","top_k":5,"score_threshold":0.3}'
+```
+
+返回格式示例：
+
+```text
+event: retrieval_started
+data: {"question":"空压机E101高温停机怎么排查？","top_k":5}
+
+event: sources
+data: {"items":[...]}
+
+event: answer_delta
+data: {"delta":"### 初步判断\n"}
+
+event: completed
+data: {"answer":"完整回答...","llm_called":true,"usage":{...}}
+```
+
+这些是POST流式接口，浏览器前端应使用 `fetch()` 读取响应流，而不是只能发GET请求的原生
+`EventSource`。接口在开始输出前仍可正常返回404或409；流开始后的错误通过 `error` 事件
+表达。响应同时设置禁用缓存和Nginx代理缓冲的响应头。
+
 当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
 后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。
+
+当前BM25实现会在查询时读取指定知识库内已索引的切片，适合作品集演示和中小规模知识库。
+如果以后扩展到大量文档，可迁移到Elasticsearch/OpenSearch或Qdrant稀疏向量检索，API层
+和RRF融合流程无需整体推翻。
 
 ## 数据库迁移
 

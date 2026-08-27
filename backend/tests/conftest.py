@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from math import sqrt
 
 import pytest
@@ -9,7 +9,14 @@ from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
 from app.services.embedding import get_embedding_provider
-from app.services.llm import LLMChatMessage, LLMGeneration, LLMUsage, get_llm_provider
+from app.services.llm import (
+    LLMChatMessage,
+    LLMGeneration,
+    LLMStreamChunk,
+    LLMUsage,
+    get_llm_provider,
+)
+from app.services.reranker import RerankResult, get_reranker_provider
 from app.services.vector_store import QdrantVectorStore, get_vector_store
 from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
@@ -73,6 +80,62 @@ class FakeLLMProvider:
             ),
         )
 
+    async def stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[LLMChatMessage] | None = None,
+    ) -> AsyncIterator[LLMStreamChunk]:
+        self.calls.append((system_prompt, user_prompt, history or []))
+        for content in (
+            "### 初步判断\n",
+            "可能与冷却系统异常有关。[资料1]\n",
+            "### 安全提醒\n停机、断电并泄压后检查。",
+        ):
+            yield LLMStreamChunk(content=content)
+        yield LLMStreamChunk(
+            usage=LLMUsage(
+                prompt_tokens=120,
+                completion_tokens=40,
+                total_tokens=160,
+            )
+        )
+
+
+class FakeRerankerProvider:
+    """按照测试关键词确定性重排，避免调用外部服务。"""
+
+    model_name = "test-keyword-reranker"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], int]] = []
+
+    async def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        top_n: int,
+    ) -> list[RerankResult]:
+        self.calls.append((query, documents, top_n))
+        terms = [
+            term
+            for term in ("e101", "高温", "冷却", "压力", "泄漏", "电机", "过载")
+            if term in query.lower()
+        ]
+        scored = [
+            (
+                index,
+                float(sum(document.lower().count(term) for term in terms))
+                + 0.001 * (len(documents) - index),
+            )
+            for index, document in enumerate(documents)
+        ]
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return [
+            RerankResult(index=index, score=score)
+            for index, score in scored[: min(top_n, len(scored))]
+        ]
+
 
 @pytest.fixture
 def vector_store() -> Iterator[QdrantVectorStore]:
@@ -88,10 +151,16 @@ def llm_provider() -> FakeLLMProvider:
 
 
 @pytest.fixture
+def reranker_provider() -> FakeRerankerProvider:
+    return FakeRerankerProvider()
+
+
+@pytest.fixture
 def client(
     tmp_path,
     vector_store: QdrantVectorStore,
     llm_provider: FakeLLMProvider,
+    reranker_provider: FakeRerankerProvider,
 ) -> Iterator[TestClient]:
     """为每个测试创建一个独立的临时 SQLite 数据库。"""
     database_path = tmp_path / "test.db"
@@ -127,6 +196,7 @@ def client(
     app.dependency_overrides[get_embedding_provider] = FakeEmbeddingProvider
     app.dependency_overrides[get_vector_store] = lambda: vector_store
     app.dependency_overrides[get_llm_provider] = lambda: llm_provider
+    app.dependency_overrides[get_reranker_provider] = lambda: reranker_provider
     original_upload_dir = settings.upload_dir
     settings.upload_dir = tmp_path / "uploads"
 
@@ -138,4 +208,5 @@ def client(
     app.dependency_overrides.pop(get_embedding_provider, None)
     app.dependency_overrides.pop(get_vector_store, None)
     app.dependency_overrides.pop(get_llm_provider, None)
+    app.dependency_overrides.pop(get_reranker_provider, None)
     asyncio.run(test_engine.dispose())

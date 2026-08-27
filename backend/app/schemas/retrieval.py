@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.document import DocumentStatus
+from app.services.hybrid_search import RetrievalMode
 
 
 class IndexingResult(BaseModel):
@@ -22,6 +23,8 @@ class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=50)
     score_threshold: float | None = Field(default=0.3, ge=0.0, le=1.0)
+    retrieval_mode: RetrievalMode = RetrievalMode.HYBRID
+    rerank: bool = True
 
     @field_validator("query")
     @classmethod
@@ -42,6 +45,11 @@ class SemanticSearchItem(BaseModel):
     score: float
     page_number: int | None
     section_title: str | None
+    vector_score: float | None = None
+    keyword_score: float | None = None
+    fusion_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_sources: list[str] = Field(default_factory=list)
 
 
 class SemanticSearchResult(BaseModel):
@@ -51,6 +59,9 @@ class SemanticSearchResult(BaseModel):
     items: list[SemanticSearchItem]
     total: int
     model_name: str
+    retrieval_mode: RetrievalMode
+    reranker_applied: bool
+    reranker_model: str | None
 
 
 class RagAskRequest(BaseModel):
@@ -59,6 +70,8 @@ class RagAskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=10)
     score_threshold: float | None = Field(default=0.3, ge=0.0, le=1.0)
+    retrieval_mode: RetrievalMode = RetrievalMode.HYBRID
+    rerank: bool = True
 
     @field_validator("question")
     @classmethod
@@ -80,6 +93,11 @@ class RagSource(BaseModel):
     score: float
     page_number: int | None
     section_title: str | None
+    vector_score: float | None = None
+    keyword_score: float | None = None
+    fusion_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_sources: list[str] = Field(default_factory=list)
 
 
 class LLMUsageRead(BaseModel):
@@ -101,3 +119,6 @@ class RagAnswerResult(BaseModel):
     llm_model: str
     llm_called: bool
     usage: LLMUsageRead
+    retrieval_mode: RetrievalMode
+    reranker_applied: bool
+    reranker_model: str | None

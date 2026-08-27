@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1200
     rag_max_context_chars: int = 12000
     conversation_history_messages: int = 10
+    reranker_enabled: bool = True
+    reranker_base_url: str = "https://api.siliconflow.cn/v1"
+    reranker_model_name: str = "BAAI/bge-reranker-v2-m3"
+    reranker_api_key: SecretStr | None = None
+    reranker_timeout_seconds: float = 30.0
+    retrieval_candidate_multiplier: int = 4
+    rrf_k: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

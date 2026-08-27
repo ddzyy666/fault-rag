@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.conversation import MessageRole
 from app.schemas.retrieval import LLMUsageRead, RagSource
+from app.services.hybrid_search import RetrievalMode
 
 
 class ConversationCreate(BaseModel):
@@ -73,6 +74,8 @@ class ConversationAskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=10)
     score_threshold: float | None = Field(default=0.3, ge=0.0, le=1.0)
+    retrieval_mode: RetrievalMode = RetrievalMode.HYBRID
+    rerank: bool = True
 
     @field_validator("question")
     @classmethod
@@ -92,3 +95,6 @@ class ConversationReply(BaseModel):
     llm_model: str
     llm_called: bool
     usage: LLMUsageRead
+    retrieval_mode: RetrievalMode
+    reranker_applied: bool
+    reranker_model: str | None

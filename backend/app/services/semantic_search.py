@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,11 @@ class SemanticSearchHit:
     score: float
     page_number: int | None
     section_title: str | None
+    vector_score: float | None = None
+    keyword_score: float | None = None
+    fusion_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_sources: list[str] = field(default_factory=list)
 
 
 async def search_knowledge_base(
@@ -71,6 +76,8 @@ async def search_knowledge_base(
                 score=round(hit.score, 6),
                 page_number=chunk.page_number,
                 section_title=chunk.extra_metadata.get("section_title"),
+                vector_score=round(hit.score, 6),
+                retrieval_sources=["vector"],
             )
         )
         if len(results) == top_k:

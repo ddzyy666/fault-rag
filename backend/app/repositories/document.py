@@ -166,6 +166,23 @@ async def get_chunks_with_documents(
     return {chunk.id: (chunk, document) for chunk, document in rows}
 
 
+async def get_knowledge_base_chunks_with_documents(
+    session: AsyncSession,
+    knowledge_base_id: UUID,
+) -> list[tuple[DocumentChunk, Document]]:
+    """读取知识库全部切片，供本地BM25建立查询时语料统计。"""
+    statement = (
+        select(DocumentChunk, Document)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(
+            Document.knowledge_base_id == knowledge_base_id,
+            Document.status == DocumentStatus.INDEXED,
+        )
+        .order_by(Document.created_at, DocumentChunk.chunk_index)
+    )
+    return list((await session.execute(statement)).all())
+
+
 async def clear_document_chunks(session: AsyncSession, document_id: UUID) -> int:
     """删除指定文档的所有切片并返回删除数量。"""
     result = await session.execute(

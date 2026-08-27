@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
@@ -5,7 +6,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import EmbeddingDependency, LLMDependency, VectorStoreDependency
+from app.api.dependencies import (
+    EmbeddingDependency,
+    LLMDependency,
+    RerankerDependency,
+    VectorStoreDependency,
+)
 from app.api.routes.documents import require_document
 from app.core.config import settings
 from app.db.database import get_db
@@ -29,9 +35,11 @@ from app.services.document_indexing import (
     remove_document_index,
 )
 from app.services.embedding import EmbeddingError
+from app.services.hybrid_search import retrieve_knowledge_base
 from app.services.llm import LLMError
-from app.services.rag_answering import answer_with_knowledge_base
-from app.services.semantic_search import search_knowledge_base
+from app.services.rag_answering import answer_with_knowledge_base, prepare_knowledge_base_rag
+from app.services.rag_streaming import stream_prepared_rag
+from app.services.sse import ServerSentEventResponse, encode_sse, sse_response
 from app.services.vector_store import VectorStoreError
 
 router = APIRouter()
@@ -108,30 +116,37 @@ async def semantic_search(
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
     vector_store: VectorStoreDependency,
+    reranker_provider: RerankerDependency,
 ) -> ApiResponse[SemanticSearchResult]:
     if await get_knowledge_base(session, knowledge_base_id) is None:
         raise HTTPException(status_code=404, detail="知识库不存在")
 
     try:
-        hits = await search_knowledge_base(
+        retrieval = await retrieve_knowledge_base(
             session,
-            knowledge_base_id,
-            payload.query,
-            payload.top_k,
-            payload.score_threshold,
-            embedding_provider,
-            vector_store,
+            knowledge_base_id=knowledge_base_id,
+            query=payload.query,
+            top_k=payload.top_k,
+            score_threshold=payload.score_threshold,
+            mode=payload.retrieval_mode,
+            rerank=payload.rerank,
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            reranker_provider=reranker_provider,
         )
     except (EmbeddingError, VectorStoreError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    items = [SemanticSearchItem(**asdict(hit)) for hit in hits]
+    items = [SemanticSearchItem(**asdict(hit)) for hit in retrieval.items]
     return ApiResponse(
         data=SemanticSearchResult(
             query=payload.query,
             items=items,
             total=len(items),
             model_name=embedding_provider.model_name,
+            retrieval_mode=retrieval.mode,
+            reranker_applied=retrieval.reranker_applied,
+            reranker_model=retrieval.reranker_model,
         )
     )
 
@@ -148,6 +163,7 @@ async def ask_knowledge_base(
     embedding_provider: EmbeddingDependency,
     vector_store: VectorStoreDependency,
     llm_provider: LLMDependency,
+    reranker_provider: RerankerDependency,
 ) -> ApiResponse[RagAnswerResult]:
     if await get_knowledge_base(session, knowledge_base_id) is None:
         raise HTTPException(status_code=404, detail="知识库不存在")
@@ -163,6 +179,9 @@ async def ask_knowledge_base(
             embedding_provider=embedding_provider,
             vector_store=vector_store,
             llm_provider=llm_provider,
+            reranker_provider=reranker_provider,
+            retrieval_mode=payload.retrieval_mode,
+            rerank=payload.rerank,
         )
     except (EmbeddingError, VectorStoreError, LLMError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -177,5 +196,54 @@ async def ask_knowledge_base(
             llm_model=result.llm_model,
             llm_called=result.llm_called,
             usage=LLMUsageRead(**asdict(result.usage)),
+            retrieval_mode=result.retrieval_mode,
+            reranker_applied=result.reranker_applied,
+            reranker_model=result.reranker_model,
         )
     )
+
+
+@router.post(
+    "/knowledge-bases/{knowledge_base_id}/ask/stream",
+    response_class=ServerSentEventResponse,
+    summary="流式生成知识库故障诊断答案",
+)
+async def stream_knowledge_base_answer(
+    knowledge_base_id: UUID,
+    payload: RagAskRequest,
+    session: DatabaseSession,
+    embedding_provider: EmbeddingDependency,
+    vector_store: VectorStoreDependency,
+    llm_provider: LLMDependency,
+    reranker_provider: RerankerDependency,
+) -> ServerSentEventResponse:
+    if await get_knowledge_base(session, knowledge_base_id) is None:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield encode_sse(
+            "retrieval_started",
+            {"question": payload.question, "top_k": payload.top_k},
+        )
+        try:
+            prepared = await prepare_knowledge_base_rag(
+                session,
+                knowledge_base_id=knowledge_base_id,
+                question=payload.question,
+                top_k=payload.top_k,
+                score_threshold=payload.score_threshold,
+                max_context_chars=settings.rag_max_context_chars,
+                embedding_provider=embedding_provider,
+                vector_store=vector_store,
+                reranker_provider=reranker_provider,
+                retrieval_mode=payload.retrieval_mode,
+                rerank=payload.rerank,
+            )
+            async for update in stream_prepared_rag(prepared, llm_provider):
+                yield encode_sse(update.event, update.data)
+        except (EmbeddingError, VectorStoreError, LLMError) as exc:
+            yield encode_sse("error", {"message": str(exc)})
+        except Exception:
+            yield encode_sse("error", {"message": "流式诊断生成失败"})
+
+    return sse_response(event_stream())
