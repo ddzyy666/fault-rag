@@ -53,6 +53,35 @@ def test_recursive_split_falls_back_to_fixed_size_for_long_text() -> None:
     assert "".join(chunks) == text
 
 
+def test_parent_headings_follow_hierarchy_and_repeat_on_long_sections() -> None:
+    markdown = "# 手册\n## 压力不足\n### 可能原因\n" + "管路泄漏。" * 80
+    markdown += "\n## 高温停机\n### 可能原因\n冷却器堵塞。\n# 新手册\n正文。"
+    chunks = build_document_chunks(
+        [SourcePage(1, markdown)], "manual.md", ChunkingConfig(120, 20, 20)
+    )
+    pressure = [c for c in chunks if "管路泄漏" in c.content]
+    assert len(pressure) > 1
+    assert all("## 压力不足\n### 可能原因" in c.content for c in pressure)
+    hot = next(c for c in chunks if "冷却器堵塞" in c.content)
+    assert "## 高温停机" in hot.content and "压力不足" not in hot.content
+    assert hot.metadata["heading_path"] == ["手册", "高温停机", "可能原因"]
+    assert hot.metadata["section_title"] == "可能原因"
+    assert "手册\n" not in chunks[-1].content.replace("新手册\n", "")
+    assert all(len(c.content) <= 120 for c in chunks)
+
+
+def test_long_heading_paths_leave_room_for_body_without_exceeding_limit() -> None:
+    markdown = "\n".join("#" * i + " " + "长标题" * 80 for i in range(1, 7))
+    chunks = build_document_chunks(
+        [SourcePage(1, markdown + "\n" + "正文" * 200)],
+        "manual.md",
+        ChunkingConfig(100, 20, 20),
+    )
+    assert chunks and all(len(c.content) <= 100 for c in chunks)
+    assert all("正文" in c.content for c in chunks)
+    assert len(chunks[0].metadata["heading_path"]) == 6
+
+
 @pytest.mark.parametrize(
     ("chunk_size", "overlap", "min_size"),
     [(100, 100, 20), (100, -1, 20), (100, 10, 101)],

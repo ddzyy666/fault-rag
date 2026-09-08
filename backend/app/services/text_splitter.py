@@ -39,6 +39,7 @@ class TextSection:
     content: str
     title: str | None = None
     level: int | None = None
+    heading_path: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +139,13 @@ def split_markdown_sections(text: str) -> list[TextSection]:
     if preamble:
         sections.append(TextSection(content=preamble))
 
+    stack: list[tuple[int, str]] = []
     for index, match in enumerate(matches):
+        level = len(match.group(1))
+        title = match.group(2).strip()
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        stack.append((level, title))
         content_start = match.end()
         content_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         sections.append(
@@ -146,6 +153,7 @@ def split_markdown_sections(text: str) -> list[TextSection]:
                 title=match.group(2).strip(),
                 level=len(match.group(1)),
                 content=text[content_start:content_end].strip(),
+                heading_path=tuple(stack),
             )
         )
     return sections
@@ -155,7 +163,19 @@ def split_section(section: TextSection, config: ChunkingConfig) -> list[str]:
     """切分单个章节，并让Markdown标题出现在该章节的每个切片中。"""
     header = ""
     if section.title and section.level:
-        header = f"{'#' * section.level} {section.title[:120]}"
+        path = section.heading_path or ((section.level, section.title),)
+        # Reserve at least half of each chunk for body text. Keep nearby ancestors
+        # before distant ones when a deeply nested path cannot fit.
+        budget = min(config.chunk_size // 2, config.chunk_size - 51)
+        lines: list[str] = []
+        for level, title in reversed(path):
+            remaining = budget - sum(map(len, lines)) - len(lines)
+            prefix = f"{'#' * level} "
+            if remaining <= len(prefix):
+                break
+            line = prefix + title[: min(120, remaining - len(prefix))]
+            lines.insert(0, line)
+        header = "\n".join(lines)
 
     content_limit = max(50, config.chunk_size - len(header) - (1 if header else 0))
     effective_overlap = min(config.chunk_overlap, max(0, content_limit - 1))
@@ -199,6 +219,7 @@ def build_document_chunks(
                         metadata={
                             "section_title": section.title,
                             "section_level": section.level,
+                            "heading_path": [title for _, title in section.heading_path],
                             "split_strategy": (
                                 "markdown_heading_recursive" if is_markdown else "recursive"
                             ),

@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "case_id": "ac-003",
+      "query": "负责从压缩空气中分离润滑油的部件是什么？",
+      "relevant_chunk_ids": [
+        "bf8485c3-42bd-4e97-bc5b-f6174020c1e5"
+      ]
+    },
+    {
+      "case_id": "ac-006",
+      "query": "收到故障报告时，应该收集哪些运行数据？",
+      "relevant_chunk_ids": [
+        "97846266-f617-4df4-84b1-860865bc2be0",
+        "dabb250b-c17f-43b9-ae21-100654b0a228"
+      ]
+    },
+    {
+      "case_id": "ac-009",
+      "query": "E401信号异常要先检查什么？",
+      "relevant_chunk_ids": [
+        "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+      ]
+    },
+    {
+      "case_id": "ac-012",
+      "query": "空载没事，一加载十分钟温度猛涨且风扇不转，先查哪里？",
+      "relevant_chunk_ids": [
+        "11a81235-3b17-43ba-84d6-022bf16d5d5c"
+      ]
+    },
+    {
+      "case_id": "ac-015",
+      "query": "怎么确认加载时进气阀确实打开了？",
+      "relevant_chunk_ids": [
+        "517bc88c-9212-4699-aaed-78eb87c622c8"
+      ]
+    },
+    {
+      "case_id": "ac-018",
+      "query": "如何判断电机保护参数是否与铭牌匹配？",
+      "relevant_chunk_ids": [
+        "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0"
+      ]
+    },
+    {
+      "case_id": "ac-021",
+      "query": "检查排气含油问题时，最小压力阀要确认什么？",
+      "relevant_chunk_ids": [
+        "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+      ]
+    },
+    {
+      "case_id": "ac-024",
+      "query": "演示手册建议空气滤芯多久检查一次？",
+      "relevant_chunk_ids": [
+        "aef8ea94-cec0-4d19-a03d-42cb2a48d867"
+      ]
+    },
+    {
+      "case_id": "ac-027",
+      "query": "CASE-AC-001最后定位到的故障原因是什么？",
+      "relevant_chunk_ids": [
+        "b9a1f825-796b-41ea-8889-523160c698a0"
+      ]
+    },
+    {
+      "case_id": "ac-030",
+      "query": "长期低负荷运行为什么可能让排气带油？",
+      "relevant_chunk_ids": [
+        "ba9ed4c7-125a-4af9-adbb-ba65913cdd37"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "name": "vector",
+      "retrieval_mode": "vector",
+      "rerank": false
+    },
+    {
+      "name": "hybrid_rrf",
+      "retrieval_mode": "hybrid",
+      "rerank": false
+    },
+    {
+      "name": "hybrid_rerank",
+      "retrieval_mode": "hybrid",
+      "rerank": true
+    }
+  ],
+  "top_k": 5,
+  "score_threshold": null
+}
