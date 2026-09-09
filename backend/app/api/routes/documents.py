@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import VectorStoreDependency
+from app.core.config import settings
 from app.db.database import get_db
 from app.models.document import Document, DocumentStatus
 from app.repositories import document as repository
@@ -207,6 +208,7 @@ async def create_document_chunks(
         chunk_size=payload.chunk_size,
         chunk_overlap=payload.chunk_overlap,
         min_chunk_size=payload.min_chunk_size,
+        include_heading_path=settings.markdown_include_heading_path,
     )
     try:
         summary = await chunk_document(session, document, config)

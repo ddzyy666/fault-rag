@@ -65,6 +65,35 @@ python -m uvicorn app.main:app --app-dir backend --reload
 - Swagger: <http://127.0.0.1:8000/docs>
 - 健康检查: <http://127.0.0.1:8000/api/v1/health>
 
+## 前端工作台
+
+前端位于 `frontend`，提供知识库选择与创建、文档上传和索引、历史诊断会话、SSE流式回答
+以及引用原文查看。先启动上述FastAPI服务，再打开另一个PowerShell窗口：
+
+```powershell
+conda activate fault-rag
+Set-Location "D:\python project\rag\frontend"
+npm install
+npm run dev
+```
+
+访问 <http://localhost:3000>。前端默认连接 `http://127.0.0.1:8000/api/v1`；如后端地址
+不同，复制 `frontend/.env.example` 为 `frontend/.env.local` 并修改
+`NEXT_PUBLIC_API_BASE_URL`。后端允许的前端来源由根目录 `.env` 中的JSON数组配置：
+
+```text
+CORS_ORIGINS=["http://127.0.0.1:3000","http://localhost:3000"]
+```
+
+构建与检查：
+
+```powershell
+Set-Location "D:\python project\rag\frontend"
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
 ## 知识库接口
 
 | 方法 | 路径 | 说明 |
@@ -142,7 +171,9 @@ chunk_overlap    = 100 字符
 min_chunk_size   = 80 字符
 ```
 
-Markdown文档优先按 `#` 到 `######` 标题划分语义章节，并把章节标题保留在对应切片中。
+Markdown文档优先按 `#` 到 `######` 标题划分语义章节，并把当前章节标题保留在对应切片中。
+分块器也会在元数据中记录完整标题路径。实验表明把全部父标题写入切片会提高部分召回、同时
+降低部分重排效果，因此默认 `MARKDOWN_INCLUDE_HEADING_PATH=false`；开启后重新分块才生效。
 其他格式优先按照段落、换行、句号、问号、分号等边界递归切分，最后才使用固定字符长度。
 纯标题和空白内容不会生成切片。
 

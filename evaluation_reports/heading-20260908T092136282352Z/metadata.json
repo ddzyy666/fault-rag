@@ -1,0 +1,12 @@
+{
+  "baseline": "evaluation_reports\\20260908T082307374071Z",
+  "with_rerank": true,
+  "embedding": "BAAI/bge-small-zh-v1.5",
+  "reranker": "BAAI/bge-reranker-v2-m3",
+  "rrf_k": 60,
+  "candidate_multiplier": 4,
+  "source_sha256": "134a1f166521099ccd4a5226b9a96efcafbf8dc5536bd1f7b2d3f6948bea201f",
+  "development_only": true,
+  "chunk_count": 26,
+  "body_boundaries_unchanged": true
+}

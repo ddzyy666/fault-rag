@@ -22,6 +22,7 @@ class ChunkingConfig:
     chunk_size: int = 700
     chunk_overlap: int = 100
     min_chunk_size: int = 80
+    include_heading_path: bool = False
 
     def __post_init__(self) -> None:
         if self.chunk_size < 100:
@@ -163,7 +164,11 @@ def split_section(section: TextSection, config: ChunkingConfig) -> list[str]:
     """切分单个章节，并让Markdown标题出现在该章节的每个切片中。"""
     header = ""
     if section.title and section.level:
-        path = section.heading_path or ((section.level, section.title),)
+        path = (
+            section.heading_path
+            if config.include_heading_path and section.heading_path
+            else ((section.level, section.title),)
+        )
         # Reserve at least half of each chunk for body text. Keep nearby ancestors
         # before distant ones when a deeply nested path cannot fit.
         budget = min(config.chunk_size // 2, config.chunk_size - 51)
@@ -220,6 +225,7 @@ def build_document_chunks(
                             "section_title": section.title,
                             "section_level": section.level,
                             "heading_path": [title for _, title in section.heading_path],
+                            "include_heading_path": config.include_heading_path,
                             "split_strategy": (
                                 "markdown_heading_recursive" if is_markdown else "recursive"
                             ),

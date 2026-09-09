@@ -46,7 +46,9 @@ async def main() -> None:
     labels = json.loads((args.baseline / "labels.json").read_text(encoding="utf-8"))
     source = Path("sample_documents/空压机维修知识库.md").read_text(encoding="utf-8")
     drafts = build_document_chunks(
-        [SimpleNamespace(page_number=1, content=source)], "manual.md", ChunkingConfig()
+        [SimpleNamespace(page_number=1, content=source)],
+        "manual.md",
+        ChunkingConfig(include_heading_path=True),
     )
     # Freeze chunk identity and labels; reject ambiguous or changed body boundaries.
     if len(drafts) != len(corpus):

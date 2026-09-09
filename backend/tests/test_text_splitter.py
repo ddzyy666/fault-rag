@@ -57,7 +57,9 @@ def test_parent_headings_follow_hierarchy_and_repeat_on_long_sections() -> None:
     markdown = "# 手册\n## 压力不足\n### 可能原因\n" + "管路泄漏。" * 80
     markdown += "\n## 高温停机\n### 可能原因\n冷却器堵塞。\n# 新手册\n正文。"
     chunks = build_document_chunks(
-        [SourcePage(1, markdown)], "manual.md", ChunkingConfig(120, 20, 20)
+        [SourcePage(1, markdown)],
+        "manual.md",
+        ChunkingConfig(120, 20, 20, include_heading_path=True),
     )
     pressure = [c for c in chunks if "管路泄漏" in c.content]
     assert len(pressure) > 1
@@ -75,11 +77,24 @@ def test_long_heading_paths_leave_room_for_body_without_exceeding_limit() -> Non
     chunks = build_document_chunks(
         [SourcePage(1, markdown + "\n" + "正文" * 200)],
         "manual.md",
-        ChunkingConfig(100, 20, 20),
+        ChunkingConfig(100, 20, 20, include_heading_path=True),
     )
     assert chunks and all(len(c.content) <= 100 for c in chunks)
     assert all("正文" in c.content for c in chunks)
     assert len(chunks[0].metadata["heading_path"]) == 6
+
+
+def test_parent_heading_context_is_disabled_by_default() -> None:
+    chunks = build_document_chunks(
+        [SourcePage(1, "# 手册\n## 压力不足\n### 可能原因\n管路泄漏。")],
+        "manual.md",
+        ChunkingConfig(),
+    )
+    leaf = chunks[-1]
+    assert leaf.content.startswith("### 可能原因\n")
+    assert "压力不足" not in leaf.content
+    assert leaf.metadata["heading_path"] == ["手册", "压力不足", "可能原因"]
+    assert leaf.metadata["include_heading_path"] is False
 
 
 @pytest.mark.parametrize(

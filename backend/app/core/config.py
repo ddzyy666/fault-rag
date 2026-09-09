@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
     debug: bool = True
+    cors_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
     database_url: str = "sqlite+aiosqlite:///./fault_rag.db"
     database_echo: bool = False
     upload_dir: Path = Path("uploads")
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     default_chunk_size: int = 700
     default_chunk_overlap: int = 100
     min_chunk_size: int = 80
+    markdown_include_heading_path: bool = False
     embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
     embedding_dimension: int = 512
     embedding_batch_size: int = 32

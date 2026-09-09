@@ -27,6 +27,8 @@ Thumbs.db
 data/
 uploads/
 qdrant_storage/
+evaluation_reports/**/*.db
+evaluation_reports/**/*.qdrant/
 *.db
 *.db-shm
 *.db-wal

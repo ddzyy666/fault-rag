@@ -1,0 +1,163 @@
+{
+  "cases": [
+    {
+      "case_id": "ac-001",
+      "query": "AC-200的额定排气量和压力是多少？",
+      "relevant_chunk_ids": [
+        "3992805d-f54e-4a75-ac69-fd7e909a8610"
+      ]
+    },
+    {
+      "case_id": "ac-002",
+      "query": "这台示例机器采用什么冷却和润滑方式？",
+      "relevant_chunk_ids": [
+        "3992805d-f54e-4a75-ac69-fd7e909a8610"
+      ]
+    },
+    {
+      "case_id": "ac-004",
+      "query": "拆卸油管之前，需要确认哪些停机安全条件？",
+      "relevant_chunk_ids": [
+        "719641bd-d3f6-42bc-9723-0957291473cb"
+      ]
+    },
+    {
+      "case_id": "ac-005",
+      "query": "高温停机之后能立刻拆卸冷却器吗？",
+      "relevant_chunk_ids": [
+        "719641bd-d3f6-42bc-9723-0957291473cb"
+      ]
+    },
+    {
+      "case_id": "ac-007",
+      "query": "E102的含义及优先检查部件是什么？",
+      "relevant_chunk_ids": [
+        "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+      ]
+    },
+    {
+      "case_id": "ac-008",
+      "query": "E301与E302分别表示哪个过滤器堵塞？",
+      "relevant_chunk_ids": [
+        "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+      ]
+    },
+    {
+      "case_id": "ac-010",
+      "query": "机房太闷和油品老化会引发哪些散热问题？",
+      "relevant_chunk_ids": [
+        "d03c4a8b-2ca3-4edc-9b0a-03b229ea4fa1"
+      ]
+    },
+    {
+      "case_id": "ac-011",
+      "query": "怀疑温度显示不准，如何核对传感器？",
+      "relevant_chunk_ids": [
+        "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30"
+      ]
+    },
+    {
+      "case_id": "ac-013",
+      "query": "机器一直加载，车间压力却升不上去，会有哪些原因？",
+      "relevant_chunk_ids": [
+        "2a4e5922-1570-4f50-8540-237b7941a350"
+      ]
+    },
+    {
+      "case_id": "ac-014",
+      "query": "新增用气设备后压力不够，应该按什么步骤检查？",
+      "relevant_chunk_ids": [
+        "517bc88c-9212-4699-aaed-78eb87c622c8"
+      ]
+    },
+    {
+      "case_id": "ac-016",
+      "query": "低温启动时油太稠，是否可能导致电机过载？",
+      "relevant_chunk_ids": [
+        "1e645978-0b07-4596-9bc1-483e8f2d7f5b"
+      ]
+    },
+    {
+      "case_id": "ac-017",
+      "query": "电机电流不平衡，电源与接触器应怎样检查？",
+      "relevant_chunk_ids": [
+        "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0"
+      ]
+    },
+    {
+      "case_id": "ac-019",
+      "query": "排气带油可能和回油管、分离芯有哪些关系？",
+      "relevant_chunk_ids": [
+        "ba9ed4c7-125a-4af9-adbb-ba65913cdd37"
+      ]
+    },
+    {
+      "case_id": "ac-020",
+      "query": "油耗变快，用气端出现油迹，是哪类故障的表现？",
+      "relevant_chunk_ids": [
+        "c7685abe-06bc-4431-8d5d-ab31623204b6"
+      ]
+    },
+    {
+      "case_id": "ac-022",
+      "query": "地脚松动和联轴器不对中是否会造成机器振动？",
+      "relevant_chunk_ids": [
+        "5ef8ea59-3897-4fc8-93f3-fc3485f4846b"
+      ]
+    },
+    {
+      "case_id": "ac-023",
+      "query": "听到持续金属撞击声，而且振动越来越大，应怎样处理？",
+      "relevant_chunk_ids": [
+        "dcd375d9-c058-4fe0-bd32-f0e9e85ff1e9"
+      ]
+    },
+    {
+      "case_id": "ac-025",
+      "query": "高粉尘环境下维护周期要怎么调整？",
+      "relevant_chunk_ids": [
+        "aef8ea94-cec0-4d19-a03d-42cb2a48d867"
+      ]
+    },
+    {
+      "case_id": "ac-026",
+      "query": "维修工单应记录哪些人员和试运行信息？",
+      "relevant_chunk_ids": [
+        "dabb250b-c17f-43b9-ae21-100654b0a228"
+      ]
+    },
+    {
+      "case_id": "ac-028",
+      "query": "CASE-AC-002更换什么部件后，压力从0.55恢复至0.8 MPa？",
+      "relevant_chunk_ids": [
+        "021380b2-3866-42b9-b496-dadcc7e86970"
+      ]
+    },
+    {
+      "case_id": "ac-029",
+      "query": "风扇转着但冷却器进出风温差不对，还应怀疑哪里？",
+      "relevant_chunk_ids": [
+        "11a81235-3b17-43ba-84d6-022bf16d5d5c"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "name": "vector",
+      "retrieval_mode": "vector",
+      "rerank": false
+    },
+    {
+      "name": "hybrid_rrf",
+      "retrieval_mode": "hybrid",
+      "rerank": false
+    },
+    {
+      "name": "hybrid_rerank",
+      "retrieval_mode": "hybrid",
+      "rerank": true
+    }
+  ],
+  "top_k": 5,
+  "score_threshold": null
+}
