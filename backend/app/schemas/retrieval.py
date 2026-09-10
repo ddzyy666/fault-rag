@@ -13,6 +13,7 @@ class IndexingResult(BaseModel):
     status: DocumentStatus
     vector_count: int
     model_name: str
+    sparse_model_name: str
     dimension: int
     elapsed_ms: int
 

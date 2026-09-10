@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     embedding_dimension: int = 512
     embedding_batch_size: int = 32
     qdrant_path: Path = Path("qdrant_storage")
-    qdrant_collection: str = "fault_diagnosis_chunks"
+    qdrant_collection: str = "fault_diagnosis_chunks_v2"
     qdrant_url: str | None = None
     qdrant_api_key: SecretStr | None = None
     llm_base_url: str = "https://api.deepseek.com"

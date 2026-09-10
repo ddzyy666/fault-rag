@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import (
     EmbeddingDependency,
     RerankerDependency,
+    SparseEmbeddingDependency,
     VectorStoreDependency,
 )
 from app.db.database import get_db
@@ -31,6 +32,7 @@ async def run_retrieval_evaluation(
     payload: RetrievalEvaluationRequest,
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
+    sparse_embedding_provider: SparseEmbeddingDependency,
     vector_store: VectorStoreDependency,
     reranker_provider: RerankerDependency,
 ) -> ApiResponse[RetrievalEvaluationResult]:
@@ -43,6 +45,7 @@ async def run_retrieval_evaluation(
             knowledge_base_id=knowledge_base_id,
             payload=payload,
             embedding_provider=embedding_provider,
+            sparse_embedding_provider=sparse_embedding_provider,
             vector_store=vector_store,
             reranker_provider=reranker_provider,
         )

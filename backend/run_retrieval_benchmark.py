@@ -16,6 +16,7 @@ from app.schemas.evaluation import RetrievalEvaluationRequest
 from app.services.embedding import get_embedding_provider
 from app.services.reranker import get_reranker_provider
 from app.services.retrieval_evaluation import evaluate_retrieval
+from app.services.sparse_embedding import get_sparse_embedding_provider
 from app.services.vector_store import get_vector_store
 
 
@@ -76,6 +77,7 @@ async def main() -> None:
                 resolved.append({**case, "relevant_chunk_ids": [str(c.id) for c in matches]})
             save("labels.json", resolved)
             embedding = get_embedding_provider()
+            sparse_embedding = get_sparse_embedding_provider()
             store = get_vector_store()
             # Exclude first model load from measured query latency.
             embedding.embed_query("空压机检索预热")
@@ -85,6 +87,7 @@ async def main() -> None:
                     "created_at": datetime.now(UTC).isoformat(),
                     "knowledge_base_id": str(args.knowledge_base_id),
                     "embedding_model": embedding.model_name,
+                    "sparse_embedding_model": sparse_embedding.model_name,
                     "reranker_model": settings.reranker_model_name,
                     "reranker_enabled": settings.reranker_enabled,
                     "candidate_multiplier": settings.retrieval_candidate_multiplier,
@@ -120,6 +123,7 @@ async def main() -> None:
                     knowledge_base_id=args.knowledge_base_id,
                     payload=payload,
                     embedding_provider=embedding,
+                    sparse_embedding_provider=sparse_embedding,
                     vector_store=store,
                     reranker_provider=get_reranker_provider(),
                 )

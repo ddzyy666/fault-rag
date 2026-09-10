@@ -19,6 +19,7 @@ from app.services.document_indexing import index_document
 from app.services.embedding import get_embedding_provider
 from app.services.reranker import get_reranker_provider
 from app.services.retrieval_evaluation import evaluate_retrieval
+from app.services.sparse_embedding import get_sparse_embedding_provider
 from app.services.text_splitter import ChunkingConfig, build_document_chunks
 from app.services.vector_store import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -89,6 +90,7 @@ async def main() -> None:
         payload.variants = [v for v in payload.variants if not v.rerank]
     save("request.json", payload.model_dump(mode="json"))
     embedding = get_embedding_provider()
+    sparse_embedding = get_sparse_embedding_provider()
     results = {}
     try:
         embedding.embed_query("预热")
@@ -125,12 +127,13 @@ async def main() -> None:
                             )
                         )
                     await session.commit()
-                    await index_document(session, doc, embedding, store)
+                    await index_document(session, doc, embedding, sparse_embedding, store)
                     result = await evaluate_retrieval(
                         session,
                         knowledge_base_id=kb.id,
                         payload=payload,
                         embedding_provider=embedding,
+                        sparse_embedding_provider=sparse_embedding,
                         vector_store=store,
                         reranker_provider=get_reranker_provider(),
                     )

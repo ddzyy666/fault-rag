@@ -1,0 +1,522 @@
+{
+  "knowledge_base_id": "b7fc2ec3-201b-43cb-8435-3cde1c0d843a",
+  "top_k": 5,
+  "score_threshold": null,
+  "best_variant": "hybrid_rrf",
+  "variants": [
+    {
+      "name": "vector",
+      "retrieval_mode": "vector",
+      "rerank": false,
+      "metrics": {
+        "case_count": 10,
+        "hit_rate_at_k": 0.8,
+        "precision_at_k": 0.18,
+        "recall_at_k": 0.8,
+        "mrr": 0.675,
+        "ndcg_at_k": 0.706161,
+        "average_latency_ms": 3.7,
+        "p95_latency_ms": 4,
+        "reranker_applied_count": 0
+      },
+      "cases": [
+        {
+          "case_id": "ac-003",
+          "query": "负责从压缩空气中分离润滑油的部件是什么？",
+          "relevant_chunk_ids": [
+            "bf8485c3-42bd-4e97-bc5b-f6174020c1e5"
+          ],
+          "retrieved_chunk_ids": [
+            "bf8485c3-42bd-4e97-bc5b-f6174020c1e5",
+            "c7685abe-06bc-4431-8d5d-ab31623204b6",
+            "3992805d-f54e-4a75-ac69-fd7e909a8610",
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-006",
+          "query": "收到故障报告时，应该收集哪些运行数据？",
+          "relevant_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "dabb250b-c17f-43b9-ae21-100654b0a228"
+          ],
+          "retrieved_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "dabb250b-c17f-43b9-ae21-100654b0a228",
+            "8601bb12-5f33-4dc7-a1c2-c6934f8d904e",
+            "2e8e7caf-6269-4353-8b7a-d4cde6d55f3a",
+            "dcd375d9-c058-4fe0-bd32-f0e9e85ff1e9"
+          ],
+          "relevant_ranks": [
+            1,
+            2
+          ],
+          "hit": true,
+          "precision_at_k": 0.4,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-009",
+          "query": "E401信号异常要先检查什么？",
+          "relevant_chunk_ids": [
+            "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+          ],
+          "retrieved_chunk_ids": [
+            "dcd375d9-c058-4fe0-bd32-f0e9e85ff1e9",
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+          ],
+          "relevant_ranks": [],
+          "hit": false,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "reciprocal_rank": 0.0,
+          "ndcg_at_k": 0.0,
+          "latency_ms": 3,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-012",
+          "query": "空载没事，一加载十分钟温度猛涨且风扇不转，先查哪里？",
+          "relevant_chunk_ids": [
+            "11a81235-3b17-43ba-84d6-022bf16d5d5c"
+          ],
+          "retrieved_chunk_ids": [
+            "11a81235-3b17-43ba-84d6-022bf16d5d5c",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "6d4a2d49-6281-4794-8973-38822dacdb70",
+            "b9a1f825-796b-41ea-8889-523160c698a0"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-015",
+          "query": "怎么确认加载时进气阀确实打开了？",
+          "relevant_chunk_ids": [
+            "517bc88c-9212-4699-aaed-78eb87c622c8"
+          ],
+          "retrieved_chunk_ids": [
+            "2a4e5922-1570-4f50-8540-237b7941a350",
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "11a81235-3b17-43ba-84d6-022bf16d5d5c"
+          ],
+          "relevant_ranks": [
+            2
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.5,
+          "ndcg_at_k": 0.63093,
+          "latency_ms": 3,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-018",
+          "query": "如何判断电机保护参数是否与铭牌匹配？",
+          "relevant_chunk_ids": [
+            "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0"
+          ],
+          "retrieved_chunk_ids": [
+            "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0",
+            "2e8e7caf-6269-4353-8b7a-d4cde6d55f3a",
+            "1e645978-0b07-4596-9bc1-483e8f2d7f5b",
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "719641bd-d3f6-42bc-9723-0957291473cb"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-021",
+          "query": "检查排气含油问题时，最小压力阀要确认什么？",
+          "relevant_chunk_ids": [
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+          ],
+          "retrieved_chunk_ids": [
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37",
+            "2a4e5922-1570-4f50-8540-237b7941a350"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-024",
+          "query": "演示手册建议空气滤芯多久检查一次？",
+          "relevant_chunk_ids": [
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867"
+          ],
+          "retrieved_chunk_ids": [
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+          ],
+          "relevant_ranks": [
+            4
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.25,
+          "ndcg_at_k": 0.430677,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-027",
+          "query": "CASE-AC-001最后定位到的故障原因是什么？",
+          "relevant_chunk_ids": [
+            "b9a1f825-796b-41ea-8889-523160c698a0"
+          ],
+          "retrieved_chunk_ids": [
+            "2e8e7caf-6269-4353-8b7a-d4cde6d55f3a",
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "2279f628-58dd-4f5a-a227-51c5c6c29a26",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "6d4a2d49-6281-4794-8973-38822dacdb70"
+          ],
+          "relevant_ranks": [],
+          "hit": false,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "reciprocal_rank": 0.0,
+          "ndcg_at_k": 0.0,
+          "latency_ms": 4,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-030",
+          "query": "长期低负荷运行为什么可能让排气带油？",
+          "relevant_chunk_ids": [
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37"
+          ],
+          "retrieved_chunk_ids": [
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37",
+            "c7685abe-06bc-4431-8d5d-ab31623204b6",
+            "2a4e5922-1570-4f50-8540-237b7941a350",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "d03c4a8b-2ca3-4edc-9b0a-03b229ea4fa1"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 3,
+          "reranker_applied": false
+        }
+      ]
+    },
+    {
+      "name": "hybrid_rrf",
+      "retrieval_mode": "hybrid",
+      "rerank": false,
+      "metrics": {
+        "case_count": 10,
+        "hit_rate_at_k": 0.9,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.9,
+        "mrr": 0.783333,
+        "ndcg_at_k": 0.813093,
+        "average_latency_ms": 9.5,
+        "p95_latency_ms": 12,
+        "reranker_applied_count": 0
+      },
+      "cases": [
+        {
+          "case_id": "ac-003",
+          "query": "负责从压缩空气中分离润滑油的部件是什么？",
+          "relevant_chunk_ids": [
+            "bf8485c3-42bd-4e97-bc5b-f6174020c1e5"
+          ],
+          "retrieved_chunk_ids": [
+            "bf8485c3-42bd-4e97-bc5b-f6174020c1e5",
+            "3992805d-f54e-4a75-ac69-fd7e909a8610",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 9,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-006",
+          "query": "收到故障报告时，应该收集哪些运行数据？",
+          "relevant_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "dabb250b-c17f-43b9-ae21-100654b0a228"
+          ],
+          "retrieved_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "dabb250b-c17f-43b9-ae21-100654b0a228",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+          ],
+          "relevant_ranks": [
+            1,
+            2
+          ],
+          "hit": true,
+          "precision_at_k": 0.4,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 11,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-009",
+          "query": "E401信号异常要先检查什么？",
+          "relevant_chunk_ids": [
+            "0a89c9ad-73fe-49b2-860d-e6c8bf70f682"
+          ],
+          "retrieved_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "dcd375d9-c058-4fe0-bd32-f0e9e85ff1e9"
+          ],
+          "relevant_ranks": [],
+          "hit": false,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "reciprocal_rank": 0.0,
+          "ndcg_at_k": 0.0,
+          "latency_ms": 8,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-012",
+          "query": "空载没事，一加载十分钟温度猛涨且风扇不转，先查哪里？",
+          "relevant_chunk_ids": [
+            "11a81235-3b17-43ba-84d6-022bf16d5d5c"
+          ],
+          "retrieved_chunk_ids": [
+            "11a81235-3b17-43ba-84d6-022bf16d5d5c",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "b9a1f825-796b-41ea-8889-523160c698a0",
+            "dcd375d9-c058-4fe0-bd32-f0e9e85ff1e9"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 9,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-015",
+          "query": "怎么确认加载时进气阀确实打开了？",
+          "relevant_chunk_ids": [
+            "517bc88c-9212-4699-aaed-78eb87c622c8"
+          ],
+          "retrieved_chunk_ids": [
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "2a4e5922-1570-4f50-8540-237b7941a350",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 12,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-018",
+          "query": "如何判断电机保护参数是否与铭牌匹配？",
+          "relevant_chunk_ids": [
+            "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0"
+          ],
+          "retrieved_chunk_ids": [
+            "68d941e8-a9e2-4e6e-86ee-ddd0f64dbbc0",
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "1e645978-0b07-4596-9bc1-483e8f2d7f5b",
+            "2e8e7caf-6269-4353-8b7a-d4cde6d55f3a",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 10,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-021",
+          "query": "检查排气含油问题时，最小压力阀要确认什么？",
+          "relevant_chunk_ids": [
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5"
+          ],
+          "retrieved_chunk_ids": [
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "89d101ed-eccc-4cc6-9bf0-9b64f7f50d30",
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 11,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-024",
+          "query": "演示手册建议空气滤芯多久检查一次？",
+          "relevant_chunk_ids": [
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867"
+          ],
+          "retrieved_chunk_ids": [
+            "517bc88c-9212-4699-aaed-78eb87c622c8",
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09"
+          ],
+          "relevant_ranks": [
+            2
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.5,
+          "ndcg_at_k": 0.63093,
+          "latency_ms": 8,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-027",
+          "query": "CASE-AC-001最后定位到的故障原因是什么？",
+          "relevant_chunk_ids": [
+            "b9a1f825-796b-41ea-8889-523160c698a0"
+          ],
+          "retrieved_chunk_ids": [
+            "97846266-f617-4df4-84b1-860865bc2be0",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "b9a1f825-796b-41ea-8889-523160c698a0",
+            "021380b2-3866-42b9-b496-dadcc7e86970",
+            "dabb250b-c17f-43b9-ae21-100654b0a228"
+          ],
+          "relevant_ranks": [
+            3
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.333333,
+          "ndcg_at_k": 0.5,
+          "latency_ms": 9,
+          "reranker_applied": false
+        },
+        {
+          "case_id": "ac-030",
+          "query": "长期低负荷运行为什么可能让排气带油？",
+          "relevant_chunk_ids": [
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37"
+          ],
+          "retrieved_chunk_ids": [
+            "ba9ed4c7-125a-4af9-adbb-ba65913cdd37",
+            "c70471d1-2f37-4420-acb7-d9dbf686c1b5",
+            "18c67e4a-79ab-41a2-bb1c-242ca99e5e09",
+            "aef8ea94-cec0-4d19-a03d-42cb2a48d867",
+            "2a4e5922-1570-4f50-8540-237b7941a350"
+          ],
+          "relevant_ranks": [
+            1
+          ],
+          "hit": true,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "ndcg_at_k": 1.0,
+          "latency_ms": 8,
+          "reranker_applied": false
+        }
+      ]
+    }
+  ]
+}

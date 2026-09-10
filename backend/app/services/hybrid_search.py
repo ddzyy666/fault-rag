@@ -6,9 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.embedding import EmbeddingProvider
-from app.services.keyword_search import KeywordSearchHit, search_keywords
+from app.services.keyword_search import KeywordSearchHit
 from app.services.reranker import RerankerError, RerankerProvider
-from app.services.semantic_search import SemanticSearchHit, search_knowledge_base
+from app.services.semantic_search import (
+    SemanticSearchHit,
+    search_hybrid_knowledge_base,
+    search_knowledge_base,
+)
+from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore
 
 
@@ -35,35 +40,33 @@ async def retrieve_knowledge_base(
     mode: RetrievalMode,
     rerank: bool,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
     reranker_provider: RerankerProvider,
 ) -> RetrievalResult:
     """召回候选，按配置执行RRF融合与Cross-Encoder重排。"""
     candidate_limit = max(top_k, top_k * settings.retrieval_candidate_multiplier)
-    vector_hits = await search_knowledge_base(
-        session,
-        knowledge_base_id,
-        query,
-        candidate_limit,
-        score_threshold,
-        embedding_provider,
-        vector_store,
-    )
-
     if mode == RetrievalMode.HYBRID:
-        keyword_hits = await search_keywords(
+        candidates = await search_hybrid_knowledge_base(
             session,
             knowledge_base_id,
             query,
             candidate_limit,
+            score_threshold,
+            embedding_provider,
+            sparse_embedding_provider,
+            vector_store,
         )
-        candidates = reciprocal_rank_fusion(
-            vector_hits,
-            keyword_hits,
-            rrf_k=max(settings.rrf_k, 1),
-        )[:candidate_limit]
     else:
-        candidates = vector_hits[:candidate_limit]
+        candidates = await search_knowledge_base(
+            session,
+            knowledge_base_id,
+            query,
+            candidate_limit,
+            score_threshold,
+            embedding_provider,
+            vector_store,
+        )
 
     reranker_applied = False
     reranker_requested = rerank and settings.reranker_enabled

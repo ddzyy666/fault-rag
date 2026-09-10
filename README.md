@@ -21,8 +21,8 @@
 - 可配置切片长度、重叠长度、最小切片长度和重新分块
 - 切片页码、章节标题、策略参数和估算Token数追踪
 - FastEmbed 本地中文向量化（BAAI/bge-small-zh-v1.5）
-- Qdrant 本地持久化向量索引和知识库级语义检索
-- SQLite切片上的BM25关键词检索、向量/BM25双路召回和RRF结果融合
+- Qdrant Dense/Sparse命名向量索引和知识库级混合检索
+- 中文词元稀疏向量、Dense/Sparse双路召回和Qdrant原生RRF结果融合
 - SiliconFlow中文重排模型，可关闭、可替换，调用失败时自动回退到RRF结果
 - 检索评估集、三种检索方案自动对比及Hit Rate、Recall、MRR、nDCG和延迟指标
 - 文档索引重建、删除与重新分块时的向量同步清理
@@ -195,21 +195,22 @@ Content-Type: application/json
 
 ## 向量索引与混合检索
 
-项目默认使用 `BAAI/bge-small-zh-v1.5` 将切片转换为 512 维向量，并把向量写入本地
-Qdrant。首次建立索引时 FastEmbed 会下载模型文件，之后会复用本机缓存。
+项目默认使用 `BAAI/bge-small-zh-v1.5` 将切片转换为512维Dense向量，同时将故障码、
+型号、中英文词元转换为Sparse词法向量。两种命名向量写入同一个Qdrant Point；首次建立
+Dense索引时FastEmbed会下载模型文件，之后会复用本机缓存。
 
 ```text
-                         ┌→ Qdrant向量召回 ─┐
-用户问题 → 候选切片召回 ┤                  ├→ RRF融合 → Reranker重排 → Top K
-                         └→ SQLite BM25 ───┘
+                         ┌→ Qdrant Dense召回  ─┐
+用户问题 → 双路查询向量 ┤                     ├→ Qdrant原生RRF → Reranker → Top K
+                         └→ Qdrant Sparse召回 ─┘
 ```
 
-- SQLite 是业务数据源，保存知识库、文档、完整切片以及处理状态。
-- Qdrant 保存切片向量和 `chunk_id`、`document_id`、`knowledge_base_id`、页码等定位字段。
-- 向量召回负责理解近义表达，BM25负责精确匹配故障码、型号和专业术语。
-- 两路候选使用RRF按排名融合，不要求两种检索分数处于同一量纲。
+- PostgreSQL是推荐的业务数据源，保存知识库、文档、完整切片以及处理状态；SQLite仍可用于本地开发和测试。
+- Qdrant保存Dense/Sparse向量和 `chunk_id`、`document_id`、`knowledge_base_id`、页码等定位字段。
+- Dense召回负责理解近义表达，Sparse召回负责精确匹配故障码、型号和专业术语。
+- 两路候选由Qdrant Query API使用RRF按排名融合，不再在查询时从SQL读取全部切片计算BM25。
 - 融合结果默认交给SiliconFlow的Reranker做精排；服务异常时自动使用RRF结果继续回答。
-- 最终根据切片ID从SQLite读取完整内容，并返回每一路的分数和命中来源。
+- 最终根据切片ID从PostgreSQL/SQLite批量读取可靠原文，并返回每一路的分数和命中来源。
 - 搜索条件强制包含知识库ID，避免不同知识库的数据混在一起。
 - 已索引文档重新分块、删除切片、删除文档或删除知识库时，会同步清理旧向量。
 
@@ -245,14 +246,22 @@ EMBEDDING_MODEL_NAME=BAAI/bge-small-zh-v1.5
 EMBEDDING_DIMENSION=512
 EMBEDDING_BATCH_SIZE=32
 QDRANT_PATH=qdrant_storage
-QDRANT_COLLECTION=fault_diagnosis_chunks
+QDRANT_COLLECTION=fault_diagnosis_chunks_v2
 QDRANT_URL=
 RETRIEVAL_CANDIDATE_MULTIPLIER=4
 RRF_K=60
 ```
 
-生产环境部署独立Qdrant后，只需设置 `QDRANT_URL`，如有鉴权再设置
-`QDRANT_API_KEY`；留空 `QDRANT_URL` 时使用本地持久化模式。
+生产环境部署Qdrant 1.16或更高版本后，只需设置 `QDRANT_URL`，如有鉴权再设置
+`QDRANT_API_KEY`；留空 `QDRANT_URL` 时使用本地持久化模式。旧版单向量集合不能直接改成
+Dense/Sparse命名向量集合，请使用新的集合名并重新调用文档索引接口。
+
+批量迁移已有的已分块/已索引文档：
+
+```powershell
+$env:PYTHONPATH="backend"
+python backend/reindex_documents.py
+```
 
 ## RAG检索效果评估
 
@@ -260,8 +269,8 @@ RRF_K=60
 
 ```text
 vector          = 纯向量检索
-hybrid_rrf      = 向量 + BM25 + RRF
-hybrid_rerank   = 向量 + BM25 + RRF + Reranker
+hybrid_rrf      = Qdrant Dense + Sparse + RRF
+hybrid_rerank   = Qdrant Dense + Sparse + RRF + Reranker
 ```
 
 先通过 `GET /api/v1/documents/{document_id}/chunks?page_size=100` 查看文档切片，人工为每个
@@ -309,7 +318,7 @@ Content-Type: application/json
 `/ask` 接口在语义检索之上增加了提示词组装和大模型生成：
 
 ```text
-故障问题 → 混合召回 → RRF融合 → Reranker重排 → SQLite原文回查
+故障问题 → Qdrant混合召回 → RRF融合 → Reranker重排 → SQL原文回查
          → 编号资料上下文 → 大模型生成 → 结构化诊断答案 + 可追溯来源
 ```
 
@@ -395,7 +404,7 @@ Content-Type: application/json
 继续调用同一接口即可追问，例如“那第二步具体检查什么？”。服务会把最近
 `CONVERSATION_HISTORY_MESSAGES` 条消息发送给模型，并把最近两个用户问题与当前问题
 组合后再做混合检索，避免省略设备或故障名称的追问失去语义。每轮用户消息、助手回答、
-引用原文快照都会保存到 SQLite；首次提问会自动把默认标题“新诊断”替换为问题摘要。
+引用原文快照都会保存到业务数据库；首次提问会自动把默认标题“新诊断”替换为问题摘要。
 
 删除知识库后历史会话仍然保留，`knowledge_base_id` 被置空，已有消息可以继续查看，但该
 会话不能再生成新的知识库诊断回答。
@@ -445,12 +454,14 @@ data: {"answer":"完整回答...","llm_called":true,"usage":{...}}
 `EventSource`。接口在开始输出前仍可正常返回404或409；流开始后的错误通过 `error` 事件
 表达。响应同时设置禁用缓存和Nginx代理缓冲的响应头。
 
-当前默认使用项目根目录下的 SQLite 数据库 `fault_rag.db`。该文件已被 Git 忽略，
-后续部署阶段会通过 `DATABASE_URL` 切换到 PostgreSQL。
+默认配置保留SQLite以降低本地运行门槛；部署时通过 `DATABASE_URL` 使用PostgreSQL。
+关键词召回已迁移到Qdrant Sparse向量，不会在每次查询时扫描SQL中的全部切片。
 
-当前BM25实现会在查询时读取指定知识库内已索引的切片，适合作品集演示和中小规模知识库。
-如果以后扩展到大量文档，可迁移到Elasticsearch/OpenSearch或Qdrant稀疏向量检索，API层
-和RRF融合流程无需整体推翻。
+PostgreSQL连接示例：
+
+```env
+DATABASE_URL=postgresql+asyncpg://fault_rag:password@localhost:5432/fault_rag
+```
 
 ## 数据库迁移
 

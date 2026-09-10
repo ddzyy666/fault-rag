@@ -5,6 +5,10 @@ from typing import Any
 from qdrant_client import QdrantClient, models
 
 from app.core.config import settings
+from app.services.sparse_embedding import SparseEmbedding
+
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "sparse"
 
 
 class VectorStoreError(RuntimeError):
@@ -16,7 +20,8 @@ class VectorPoint:
     """准备写入Qdrant的向量点。"""
 
     point_id: str
-    vector: list[float]
+    dense_vector: list[float]
+    sparse_vector: SparseEmbedding
     payload: dict[str, Any]
 
 
@@ -27,6 +32,10 @@ class VectorSearchHit:
     point_id: str
     score: float
     payload: dict[str, Any]
+    vector_score: float | None = None
+    sparse_score: float | None = None
+    fusion_score: float | None = None
+    retrieval_sources: tuple[str, ...] = ()
 
 
 class QdrantVectorStore:
@@ -45,20 +54,33 @@ class QdrantVectorStore:
             if not self.client.collection_exists(self.collection_name):
                 self.client.create_collection(
                     collection_name=self.collection_name,
-                    vectors_config=models.VectorParams(
-                        size=dimension,
-                        distance=models.Distance.COSINE,
-                    ),
+                    vectors_config={
+                        DENSE_VECTOR_NAME: models.VectorParams(
+                            size=dimension,
+                            distance=models.Distance.COSINE,
+                        )
+                    },
+                    sparse_vectors_config={
+                        SPARSE_VECTOR_NAME: models.SparseVectorParams(
+                            modifier=models.Modifier.IDF,
+                        )
+                    },
                 )
                 return
 
             collection = self.client.get_collection(self.collection_name)
             vector_config = collection.config.params.vectors
-            if not isinstance(vector_config, models.VectorParams):
-                raise VectorStoreError("当前集合不是单向量配置")
-            if vector_config.size != dimension:
+            sparse_config = collection.config.params.sparse_vectors
+            if not isinstance(vector_config, dict) or DENSE_VECTOR_NAME not in vector_config:
                 raise VectorStoreError(
-                    f"Qdrant集合维度为{vector_config.size}，当前模型维度为{dimension}"
+                    "Qdrant集合仍是旧版单向量结构，请更换QDRANT_COLLECTION名称并重新索引文档"
+                )
+            if not isinstance(sparse_config, dict) or SPARSE_VECTOR_NAME not in sparse_config:
+                raise VectorStoreError("Qdrant集合缺少sparse命名向量，请重新建立索引")
+            if vector_config[DENSE_VECTOR_NAME].size != dimension:
+                raise VectorStoreError(
+                    f"Qdrant集合维度为{vector_config[DENSE_VECTOR_NAME].size}，"
+                    f"当前模型维度为{dimension}"
                 )
         except VectorStoreError:
             raise
@@ -74,7 +96,13 @@ class QdrantVectorStore:
                 points=[
                     models.PointStruct(
                         id=point.point_id,
-                        vector=point.vector,
+                        vector={
+                            DENSE_VECTOR_NAME: point.dense_vector,
+                            SPARSE_VECTOR_NAME: models.SparseVector(
+                                indices=point.sparse_vector.indices,
+                                values=point.sparse_vector.values,
+                            ),
+                        },
                         payload=point.payload,
                     )
                     for point in points
@@ -140,6 +168,7 @@ class QdrantVectorStore:
             response = self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
+                using=DENSE_VECTOR_NAME,
                 query_filter=models.Filter(
                     must=[
                         models.FieldCondition(
@@ -158,11 +187,97 @@ class QdrantVectorStore:
                     point_id=str(point.id),
                     score=float(point.score),
                     payload=point.payload or {},
+                    vector_score=float(point.score),
+                    retrieval_sources=("vector",),
                 )
                 for point in response.points
             ]
         except Exception as exc:
             raise VectorStoreError("Qdrant语义检索失败") from exc
+
+    def hybrid_search(
+        self,
+        dense_vector: list[float],
+        sparse_vector: SparseEmbedding,
+        knowledge_base_id: str,
+        limit: int,
+        score_threshold: float | None,
+    ) -> list[VectorSearchHit]:
+        """由Qdrant原生执行Dense/Sparse召回和RRF融合。"""
+        try:
+            if not self.client.collection_exists(self.collection_name):
+                return []
+            query_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="knowledge_base_id",
+                        match=models.MatchValue(value=knowledge_base_id),
+                    )
+                ]
+            )
+            sparse_query = models.SparseVector(
+                indices=sparse_vector.indices,
+                values=sparse_vector.values,
+            )
+            dense_prefetch = models.Prefetch(
+                query=dense_vector,
+                using=DENSE_VECTOR_NAME,
+                filter=query_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+            sparse_prefetch = models.Prefetch(
+                query=sparse_query,
+                using=SPARSE_VECTOR_NAME,
+                filter=query_filter,
+                limit=limit,
+            )
+            dense_request = models.QueryRequest(
+                query=dense_vector,
+                using=DENSE_VECTOR_NAME,
+                filter=query_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+            sparse_request = models.QueryRequest(
+                query=sparse_query,
+                using=SPARSE_VECTOR_NAME,
+                filter=query_filter,
+                limit=limit,
+            )
+            fused_request = models.QueryRequest(
+                prefetch=[dense_prefetch, sparse_prefetch],
+                query=models.RrfQuery(rrf=models.Rrf(k=max(settings.rrf_k, 1))),
+                limit=limit,
+                with_payload=True,
+            )
+            dense_response, sparse_response, fused_response = self.client.query_batch_points(
+                collection_name=self.collection_name,
+                requests=[dense_request, sparse_request, fused_request],
+            )
+            dense_scores = {str(point.id): float(point.score) for point in dense_response.points}
+            sparse_scores = {str(point.id): float(point.score) for point in sparse_response.points}
+            return [
+                VectorSearchHit(
+                    point_id=str(point.id),
+                    score=float(point.score),
+                    payload=point.payload or {},
+                    vector_score=dense_scores.get(str(point.id)),
+                    sparse_score=sparse_scores.get(str(point.id)),
+                    fusion_score=float(point.score),
+                    retrieval_sources=tuple(
+                        source
+                        for source, scores in (
+                            ("vector", dense_scores),
+                            ("keyword", sparse_scores),
+                        )
+                        if str(point.id) in scores
+                    ),
+                )
+                for point in fused_response.points
+            ]
+        except Exception as exc:
+            raise VectorStoreError("Qdrant混合检索失败") from exc
 
 
 @lru_cache

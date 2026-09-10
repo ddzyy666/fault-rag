@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import Document, DocumentStatus
 from app.repositories import document as repository
 from app.services.embedding import EmbeddingProvider
+from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore, VectorPoint
 
 
@@ -25,6 +26,7 @@ class IndexingSummary:
 
     vector_count: int
     model_name: str
+    sparse_model_name: str
     dimension: int
     elapsed_ms: int
 
@@ -33,6 +35,7 @@ async def index_document(
     session: AsyncSession,
     document: Document,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
 ) -> IndexingSummary:
     """批量生成向量、写入Qdrant并同步SQL索引状态。"""
@@ -49,11 +52,15 @@ async def index_document(
     started_at = perf_counter()
     vectors_replaced = False
     try:
-        vectors = await asyncio.to_thread(
-            embedding_provider.embed_documents,
-            [chunk.content for chunk in chunks],
+        texts = [chunk.content for chunk in chunks]
+        vectors, sparse_vectors = await asyncio.gather(
+            asyncio.to_thread(
+                embedding_provider.embed_documents,
+                texts,
+            ),
+            asyncio.to_thread(sparse_embedding_provider.embed_documents, texts),
         )
-        if len(vectors) != len(chunks):
+        if len(vectors) != len(chunks) or len(sparse_vectors) != len(chunks):
             raise DocumentIndexingError("Embedding数量与文档切片数量不一致")
 
         await asyncio.to_thread(
@@ -66,7 +73,8 @@ async def index_document(
         points = [
             VectorPoint(
                 point_id=str(chunk.id),
-                vector=vector,
+                dense_vector=vector,
+                sparse_vector=sparse_vector,
                 payload={
                     "chunk_id": str(chunk.id),
                     "document_id": str(document_id),
@@ -75,9 +83,10 @@ async def index_document(
                     "section_title": chunk.extra_metadata.get("section_title"),
                     "filename": document.filename,
                     "embedding_model": embedding_provider.model_name,
+                    "sparse_embedding_model": sparse_embedding_provider.model_name,
                 },
             )
-            for chunk, vector in zip(chunks, vectors, strict=True)
+            for chunk, vector, sparse_vector in zip(chunks, vectors, sparse_vectors, strict=True)
         ]
         await asyncio.to_thread(vector_store.upsert, points)
 
@@ -89,6 +98,7 @@ async def index_document(
             "vector_index": {
                 "model": embedding_provider.model_name,
                 "dimension": embedding_provider.dimension,
+                "sparse_model": sparse_embedding_provider.model_name,
                 "vector_count": len(chunks),
                 "indexed_at": datetime.now(UTC).isoformat(),
             },
@@ -123,6 +133,7 @@ async def index_document(
     return IndexingSummary(
         vector_count=len(chunks),
         model_name=embedding_provider.model_name,
+        sparse_model_name=sparse_embedding_provider.model_name,
         dimension=embedding_provider.dimension,
         elapsed_ms=round((perf_counter() - started_at) * 1000),
     )

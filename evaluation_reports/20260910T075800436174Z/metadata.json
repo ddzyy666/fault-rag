@@ -1,0 +1,13 @@
+{
+  "created_at": "2026-09-10T07:58:00.550127+00:00",
+  "knowledge_base_id": "b7fc2ec3-201b-43cb-8435-3cde1c0d843a",
+  "embedding_model": "BAAI/bge-small-zh-v1.5",
+  "sparse_embedding_model": "fault-lexical-hash-v1",
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "reranker_enabled": true,
+  "candidate_multiplier": 4,
+  "rrf_k": 60,
+  "corpus_sha256": "6e23c0eab770ceace0db7896a6934d78ee5e30c23b7ba5753657468538f7088b",
+  "annotation": "AI依据原文初标，待人工复核；非现场维修数据。split在检索前固定，未据结果调参。",
+  "latency_note": "Serial single run after embedding warmup; not load testing."
+}

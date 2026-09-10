@@ -65,6 +65,7 @@ def test_index_search_rechunk_and_delete_index(client: TestClient) -> None:
     assert index_result["status"] == "indexed"
     assert index_result["vector_count"] == 3
     assert index_result["model_name"] == "test-keyword-embedding"
+    assert index_result["sparse_model_name"] == "fault-lexical-hash-v1"
     assert index_result["dimension"] == 4
 
     chunks_response = client.get(f"/api/v1/documents/{document_id}/chunks?page_size=100")

@@ -18,6 +18,7 @@ from app.schemas.evaluation import (
 from app.services.embedding import EmbeddingProvider
 from app.services.hybrid_search import retrieve_knowledge_base
 from app.services.reranker import RerankerProvider
+from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore
 
 
@@ -67,6 +68,7 @@ async def evaluate_retrieval(
     knowledge_base_id: UUID,
     payload: RetrievalEvaluationRequest,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
     reranker_provider: RerankerProvider,
 ) -> RetrievalEvaluationResult:
@@ -87,6 +89,7 @@ async def evaluate_retrieval(
                 mode=variant.retrieval_mode,
                 rerank=variant.rerank,
                 embedding_provider=embedding_provider,
+                sparse_embedding_provider=sparse_embedding_provider,
                 vector_store=vector_store,
                 reranker_provider=reranker_provider,
             )

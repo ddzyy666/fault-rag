@@ -17,6 +17,10 @@ from app.services.llm import (
     get_llm_provider,
 )
 from app.services.reranker import RerankResult, get_reranker_provider
+from app.services.sparse_embedding import (
+    HashedLexicalEmbeddingProvider,
+    get_sparse_embedding_provider,
+)
 from app.services.vector_store import QdrantVectorStore, get_vector_store
 from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
@@ -194,6 +198,7 @@ def client(
     asyncio.run(create_tables())
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_embedding_provider] = FakeEmbeddingProvider
+    app.dependency_overrides[get_sparse_embedding_provider] = HashedLexicalEmbeddingProvider
     app.dependency_overrides[get_vector_store] = lambda: vector_store
     app.dependency_overrides[get_llm_provider] = lambda: llm_provider
     app.dependency_overrides[get_reranker_provider] = lambda: reranker_provider
@@ -206,6 +211,7 @@ def client(
     settings.upload_dir = original_upload_dir
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(get_embedding_provider, None)
+    app.dependency_overrides.pop(get_sparse_embedding_provider, None)
     app.dependency_overrides.pop(get_vector_store, None)
     app.dependency_overrides.pop(get_llm_provider, None)
     app.dependency_overrides.pop(get_reranker_provider, None)

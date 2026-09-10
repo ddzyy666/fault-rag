@@ -8,6 +8,7 @@ from app.services.hybrid_search import RetrievalMode, retrieve_knowledge_base
 from app.services.llm import LLMChatMessage, LLMProvider, LLMUsage
 from app.services.rag_prompt import DiagnosticPrompt, build_diagnostic_prompt
 from app.services.reranker import RerankerProvider
+from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore
 
 NO_CONTEXT_ANSWER = (
@@ -73,6 +74,7 @@ async def prepare_knowledge_base_rag(
     score_threshold: float | None,
     max_context_chars: int,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
     reranker_provider: RerankerProvider,
     retrieval_mode: RetrievalMode = RetrievalMode.HYBRID,
@@ -89,6 +91,7 @@ async def prepare_knowledge_base_rag(
         mode=retrieval_mode,
         rerank=rerank,
         embedding_provider=embedding_provider,
+        sparse_embedding_provider=sparse_embedding_provider,
         vector_store=vector_store,
         reranker_provider=reranker_provider,
     )
@@ -143,6 +146,7 @@ async def answer_with_knowledge_base(
     score_threshold: float | None,
     max_context_chars: int,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
     llm_provider: LLMProvider,
     reranker_provider: RerankerProvider,
@@ -161,6 +165,7 @@ async def answer_with_knowledge_base(
         score_threshold=score_threshold,
         max_context_chars=max_context_chars,
         embedding_provider=embedding_provider,
+        sparse_embedding_provider=sparse_embedding_provider,
         vector_store=vector_store,
         reranker_provider=reranker_provider,
         retrieval_mode=retrieval_mode,

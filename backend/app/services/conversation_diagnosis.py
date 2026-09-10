@@ -10,6 +10,7 @@ from app.services.hybrid_search import RetrievalMode
 from app.services.llm import LLMChatMessage, LLMProvider
 from app.services.rag_answering import RagAnswer, RagAnswerSource, answer_with_knowledge_base
 from app.services.reranker import RerankerProvider
+from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore
 
 
@@ -36,6 +37,7 @@ async def diagnose_in_conversation(
     top_k: int,
     score_threshold: float | None,
     embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
     vector_store: QdrantVectorStore,
     llm_provider: LLMProvider,
     reranker_provider: RerankerProvider,
@@ -60,6 +62,7 @@ async def diagnose_in_conversation(
         score_threshold=score_threshold,
         max_context_chars=settings.rag_max_context_chars,
         embedding_provider=embedding_provider,
+        sparse_embedding_provider=sparse_embedding_provider,
         vector_store=vector_store,
         llm_provider=llm_provider,
         reranker_provider=reranker_provider,

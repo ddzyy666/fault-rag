@@ -10,6 +10,7 @@ from app.api.dependencies import (
     EmbeddingDependency,
     LLMDependency,
     RerankerDependency,
+    SparseEmbeddingDependency,
     VectorStoreDependency,
 )
 from app.api.routes.documents import require_document
@@ -55,6 +56,7 @@ async def create_document_index(
     document_id: UUID,
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
+    sparse_embedding_provider: SparseEmbeddingDependency,
     vector_store: VectorStoreDependency,
 ) -> ApiResponse[IndexingResult]:
     document = await require_document(document_id, session)
@@ -66,6 +68,7 @@ async def create_document_index(
             session,
             document,
             embedding_provider,
+            sparse_embedding_provider,
             vector_store,
         )
     except DocumentNotChunkedError as exc:
@@ -79,6 +82,7 @@ async def create_document_index(
             status=document.status,
             vector_count=summary.vector_count,
             model_name=summary.model_name,
+            sparse_model_name=summary.sparse_model_name,
             dimension=summary.dimension,
             elapsed_ms=summary.elapsed_ms,
         )
@@ -115,6 +119,7 @@ async def semantic_search(
     payload: SemanticSearchRequest,
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
+    sparse_embedding_provider: SparseEmbeddingDependency,
     vector_store: VectorStoreDependency,
     reranker_provider: RerankerDependency,
 ) -> ApiResponse[SemanticSearchResult]:
@@ -131,6 +136,7 @@ async def semantic_search(
             mode=payload.retrieval_mode,
             rerank=payload.rerank,
             embedding_provider=embedding_provider,
+            sparse_embedding_provider=sparse_embedding_provider,
             vector_store=vector_store,
             reranker_provider=reranker_provider,
         )
@@ -161,6 +167,7 @@ async def ask_knowledge_base(
     payload: RagAskRequest,
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
+    sparse_embedding_provider: SparseEmbeddingDependency,
     vector_store: VectorStoreDependency,
     llm_provider: LLMDependency,
     reranker_provider: RerankerDependency,
@@ -177,6 +184,7 @@ async def ask_knowledge_base(
             score_threshold=payload.score_threshold,
             max_context_chars=settings.rag_max_context_chars,
             embedding_provider=embedding_provider,
+            sparse_embedding_provider=sparse_embedding_provider,
             vector_store=vector_store,
             llm_provider=llm_provider,
             reranker_provider=reranker_provider,
@@ -213,6 +221,7 @@ async def stream_knowledge_base_answer(
     payload: RagAskRequest,
     session: DatabaseSession,
     embedding_provider: EmbeddingDependency,
+    sparse_embedding_provider: SparseEmbeddingDependency,
     vector_store: VectorStoreDependency,
     llm_provider: LLMDependency,
     reranker_provider: RerankerDependency,
@@ -234,6 +243,7 @@ async def stream_knowledge_base_answer(
                 score_threshold=payload.score_threshold,
                 max_context_chars=settings.rag_max_context_chars,
                 embedding_provider=embedding_provider,
+                sparse_embedding_provider=sparse_embedding_provider,
                 vector_store=vector_store,
                 reranker_provider=reranker_provider,
                 retrieval_mode=payload.retrieval_mode,
