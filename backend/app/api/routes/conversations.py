@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
@@ -15,8 +16,10 @@ from app.api.dependencies import (
 )
 from app.core.config import settings
 from app.db.database import get_db
+from app.repositories import agent_run as run_repository
 from app.repositories import conversation as repository
 from app.repositories.knowledge_base import get_knowledge_base
+from app.schemas.agent_run import AgentRunDetail, AgentRunList, AgentRunRead, AgentToolCallRead
 from app.schemas.conversation import (
     ConversationAskRequest,
     ConversationCreate,
@@ -33,6 +36,7 @@ from app.services.conversation_diagnosis import (
     diagnose_in_conversation,
     persist_conversation_answer,
     prepare_conversation_context,
+    stream_agent_conversation,
 )
 from app.services.embedding import EmbeddingError
 from app.services.llm import LLMError
@@ -50,6 +54,58 @@ async def require_conversation(conversation_id: UUID, session: AsyncSession):
     if conversation is None:
         raise HTTPException(status_code=404, detail="诊断会话不存在")
     return conversation
+
+
+@router.get(
+    "/{conversation_id}/runs",
+    response_model=ApiResponse[AgentRunList],
+    summary="查询会话执行记录（含失败记录）",
+)
+async def get_agent_runs(
+    conversation_id: UUID,
+    session: DatabaseSession,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    assistant_message_id: UUID | None = None,
+) -> ApiResponse[AgentRunList]:
+    await require_conversation(conversation_id, session)
+    items, total = await run_repository.list_runs(
+        session,
+        conversation_id,
+        page,
+        page_size,
+        assistant_message_id,
+    )
+    return ApiResponse(
+        data=AgentRunList(
+            items=[AgentRunRead.model_validate(item) for item in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
+@router.get(
+    "/{conversation_id}/runs/{run_id}",
+    response_model=ApiResponse[AgentRunDetail],
+    summary="查看工具执行过程",
+)
+async def get_agent_run(
+    conversation_id: UUID,
+    run_id: UUID,
+    session: DatabaseSession,
+) -> ApiResponse[AgentRunDetail]:
+    await require_conversation(conversation_id, session)
+    run, calls = await run_repository.get_run(session, conversation_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="执行记录不存在")
+    return ApiResponse(
+        data=AgentRunDetail(
+            **AgentRunRead.model_validate(run).model_dump(),
+            tool_calls=[AgentToolCallRead.model_validate(call) for call in calls],
+        )
+    )
 
 
 @router.post(
@@ -205,6 +261,7 @@ async def create_conversation_message(
             reranker_provider=reranker_provider,
             retrieval_mode=payload.retrieval_mode,
             rerank=payload.rerank,
+            mode=payload.mode,
         )
     except (EmbeddingError, VectorStoreError, LLMError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -247,6 +304,29 @@ async def stream_conversation_message(
         raise HTTPException(status_code=409, detail="会话关联的知识库已被删除")
 
     async def event_stream() -> AsyncIterator[str]:
+        if payload.mode == "agent":
+            try:
+                async with aclosing(
+                    stream_agent_conversation(
+                        session,
+                        conversation,
+                        question=payload.question,
+                        embedding_provider=embedding_provider,
+                        sparse_embedding_provider=sparse_embedding_provider,
+                        vector_store=vector_store,
+                        llm_provider=llm_provider,
+                        reranker_provider=reranker_provider,
+                    )
+                ) as updates:
+                    async for update in updates:
+                        yield encode_sse(update.event, update.data)
+            except LLMError as exc:
+                await session.rollback()
+                yield encode_sse("error", {"message": str(exc)})
+            except Exception:
+                await session.rollback()
+                yield encode_sse("error", {"message": "Agent 诊断失败"})
+            return
         yield encode_sse(
             "retrieval_started",
             {

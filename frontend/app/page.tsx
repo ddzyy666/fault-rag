@@ -26,6 +26,7 @@ import {
 } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { AgentRuns } from '@/components/agent-runs';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -89,6 +90,10 @@ export default function Home() {
   const [createOpen, setCreateOpen] = useState(false);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [runView, setRunView] = useState<{
+    conversationId: string;
+    messageId?: string;
+  } | null>(null);
   const [selectedSources, setSelectedSources] = useState<Source[]>([]);
   const [newKbName, setNewKbName] = useState('');
   const [newKbDescription, setNewKbDescription] = useState('');
@@ -275,6 +280,7 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            mode: 'agent',
             question: content,
             top_k: 5,
             score_threshold: 0.3,
@@ -283,7 +289,27 @@ export default function Home() {
           }),
         },
       );
+      let completed = false;
       await parseSse(response, (eventName, data) => {
+        if (
+          ['agent_started', 'tool_started', 'tool_completed'].includes(
+            eventName,
+          )
+        ) {
+          const toolLabel =
+            data.name === 'get_device_history' ? '设备历史' : '维修手册';
+          const progress =
+            eventName === 'agent_started'
+              ? '正在分析问题…'
+              : eventName === 'tool_started'
+                ? `正在查询${toolLabel}…`
+                : `查询${toolLabel}${data.status === 'ok' ? '完成' : '未成功'}，正在分析结果…`;
+          setMessages((items) =>
+            items.map((item) =>
+              item.id === assistantId ? { ...item, progress } : item,
+            ),
+          );
+        }
         if (eventName === 'sources') {
           const sources = (data.items ?? []) as Source[];
           setMessages((items) =>
@@ -302,7 +328,8 @@ export default function Home() {
             ),
           );
         }
-        if (eventName === 'completed')
+        if (eventName === 'completed') {
+          completed = true;
           setMessages((items) =>
             items.map((item) =>
               item.id === assistantId
@@ -314,9 +341,11 @@ export default function Home() {
                 : item,
             ),
           );
+        }
         if (eventName === 'error')
           throw new Error(textValue(data.message, '诊断生成失败'));
       });
+      if (!completed) throw new Error('连接中断，回答未保存，请重试。');
       if (activeKb) await loadWorkspace(activeKb.id);
     } catch (cause) {
       const errorMessage =
@@ -502,6 +531,17 @@ export default function Home() {
                 >
                   混合检索
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!activeConversation}
+                  onClick={() =>
+                    activeConversation &&
+                    setRunView({ conversationId: activeConversation.id })
+                  }
+                >
+                  执行记录
+                </Button>
                 <Badge
                   variant="outline"
                   className="hidden border-violet-400/20 text-violet-300 sm:flex"
@@ -553,10 +593,29 @@ export default function Home() {
                           {chatMessage.content || (
                             <span className="inline-flex items-center gap-2 text-slate-400">
                               <LoaderCircle className="size-4 animate-spin" />
-                              正在检索维修资料
+                              {chatMessage.progress || '正在分析问题…'}
                             </span>
                           )}
                         </div>
+                        {chatMessage.role === 'assistant' &&
+                          !chatMessage.streaming &&
+                          activeConversation && (
+                            <button
+                              className="mt-3 mr-3 text-xs text-cyan-300 hover:underline"
+                              onClick={() =>
+                                setRunView({
+                                  conversationId: activeConversation.id,
+                                  messageId: chatMessage.id.startsWith(
+                                    'assistant-',
+                                  )
+                                    ? undefined
+                                    : chatMessage.id,
+                                })
+                              }
+                            >
+                              查看执行过程
+                            </button>
+                          )}
                         {chatMessage.role === 'assistant' &&
                           chatMessage.citations.length > 0 && (
                             <button
@@ -679,6 +738,13 @@ export default function Home() {
         </div>
       </div>
 
+      {runView && (
+        <AgentRuns
+          key={`${runView.conversationId}:${runView.messageId ?? 'all'}`}
+          {...runView}
+          onClose={() => setRunView(null)}
+        />
+      )}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="border-white/10 bg-[#0d1929] text-slate-100 sm:max-w-md">
           <form onSubmit={(event) => void createKnowledgeBase(event)}>

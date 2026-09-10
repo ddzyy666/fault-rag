@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -71,6 +71,7 @@ class MessageList(BaseModel):
 
 
 class ConversationAskRequest(BaseModel):
+    mode: Literal["rag", "agent"] = "rag"
     question: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=10)
     score_threshold: float | None = Field(default=0.3, ge=0.0, le=1.0)

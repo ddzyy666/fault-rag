@@ -5,6 +5,26 @@
 
 ## 当前功能
 
+新增设备诊断 Agent 准备层：设备档案、维修历史、模拟数据初始化，以及
+`get_device_history` / `search_manual` 两个只读工具。使用步骤和后续对话验收目标见
+[Agent 验收场景](docs/agent_acceptance.md)。前端聊天现已使用 Agent 工具调用循环，
+支持查设备历史、检索手册、根据工具结果继续判断或追问。
+
+多轮消息接口添加 `mode: "agent"` 可启用工具调用；省略或设置 `mode: "rag"` 保持原有
+RAG 行为。Agent 使用工具自己的混合检索参数，原请求中的 `retrieval_mode`、`rerank`、
+`score_threshold`、`top_k` 只控制 RAG 模式。模型需支持兼容 Chat Completions 的工具调用。
+Agent SSE 实时发送 `agent_started`、`tool_started`、`tool_completed` 和累计 `sources`；
+最终正文完整返回后通过 `answer_delta` 一次发送，不是逐 Token 输出。完整回答才原子落库。
+默认最多 6 次模型决策、8 次工具执行、120 秒总时限、48000 字符上下文预算；
+Token 用量汇总所有模型决策，服务商未提供的统计保持为空。
+
+Agent 执行记录已持久化：回答下方点击“查看执行过程”，或在会话顶部点击“执行记录”查看
+成功、失败及中断的轮次。详情包含工具顺序、参数、结果摘要、状态、耗时和已返回的模型用量。
+启用前执行 `python -m alembic -c backend/alembic.ini upgrade head` 创建
+`agent_runs`、`agent_tool_calls`。历史执行无法回填，普通 RAG 模式不生成 Agent 记录。
+接口为 `GET /api/v1/conversations/{id}/runs`（分页，可按 `assistant_message_id` 过滤）和
+`GET /api/v1/conversations/{id}/runs/{run_id}`。详见 [执行记录设计](docs/agent_runs.md)。
+
 - FastAPI 后端基础结构
 - 环境变量配置
 - 统一 API 响应格式

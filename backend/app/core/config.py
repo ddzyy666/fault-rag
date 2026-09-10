@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1200
     rag_max_context_chars: int = 12000
     conversation_history_messages: int = 10
+    agent_max_steps: int = Field(default=6, ge=1, le=20)
+    agent_max_tool_calls: int = Field(default=8, ge=1, le=30)
+    agent_timeout_seconds: float = Field(default=120, gt=0, le=600)
+    agent_max_context_chars: int = Field(default=48000, ge=1000)
     reranker_enabled: bool = True
     reranker_base_url: str = "https://api.siliconflow.cn/v1"
     reranker_model_name: str = "BAAI/bge-reranker-v2-m3"

@@ -46,6 +46,7 @@ export type ChatMessage = {
   citations: Source[];
   created_at?: string;
   streaming?: boolean;
+  progress?: string;
 };
 
 type Envelope<T> = { code: number; message: string; data: T };

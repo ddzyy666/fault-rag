@@ -10,7 +10,9 @@ from app.services.rag_answering import NO_CONTEXT_ANSWER, PreparedRag, RagAnswer
 class RagStreamUpdate:
     """内部流事件；completed事件额外携带完整结果供会话落库。"""
 
-    event: Literal["sources", "answer_delta", "completed"]
+    event: Literal[
+        "sources", "answer_delta", "completed", "agent_started", "tool_started", "tool_completed"
+    ]
     data: dict[str, Any]
     answer: RagAnswer | None = None
 

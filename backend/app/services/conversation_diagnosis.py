@@ -1,14 +1,21 @@
+from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import asdict, dataclass
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.conversation import Conversation, Message, MessageRole
 from app.repositories import conversation as repository
+from app.services.agent_trace import record_agent_run
+from app.services.diagnostic_agent import stream_diagnostic_agent
+from app.services.diagnostic_tools import DiagnosticTools
 from app.services.embedding import EmbeddingProvider
 from app.services.hybrid_search import RetrievalMode
 from app.services.llm import LLMChatMessage, LLMProvider
 from app.services.rag_answering import RagAnswer, RagAnswerSource, answer_with_knowledge_base
+from app.services.rag_streaming import RagStreamUpdate
 from app.services.reranker import RerankerProvider
 from app.services.sparse_embedding import SparseEmbeddingProvider
 from app.services.vector_store import QdrantVectorStore
@@ -29,6 +36,68 @@ class ConversationRagContext:
     retrieval_query: str
 
 
+async def stream_agent_conversation(
+    session: AsyncSession,
+    conversation: Conversation,
+    *,
+    question: str,
+    embedding_provider: EmbeddingProvider,
+    sparse_embedding_provider: SparseEmbeddingProvider,
+    vector_store: QdrantVectorStore,
+    llm_provider: LLMProvider,
+    reranker_provider: RerankerProvider,
+) -> AsyncIterator[RagStreamUpdate]:
+    conversation_id = conversation.id
+    knowledge_base_id = conversation.knowledge_base_id
+    async with record_agent_run(
+        session, conversation_id, question, llm_provider.model_name
+    ) as trace:
+        context = await prepare_conversation_context(session, conversation, question)
+        tools = DiagnosticTools(
+            session,
+            knowledge_base_id=knowledge_base_id,
+            embedding_provider=embedding_provider,
+            sparse_embedding_provider=sparse_embedding_provider,
+            vector_store=vector_store,
+            reranker_provider=reranker_provider,
+        )
+        async with aclosing(
+            stream_diagnostic_agent(
+                question=question,
+                history=context.history,
+                tools=tools,
+                llm_provider=llm_provider,
+                trace=trace,
+            )
+        ) as updates:
+            async for update in updates:
+                if update.answer is not None:
+                    trace.phase = "persisting"
+                    await trace.update(phase=trace.phase)
+                    await session.refresh(conversation)
+                    exchange = await persist_conversation_answer(
+                        session,
+                        conversation,
+                        question=question,
+                        rag_answer=update.answer,
+                        agent_run_id=trace.id,
+                        run_elapsed_ms=trace.elapsed_ms,
+                    )
+                    yield RagStreamUpdate(
+                        event="completed",
+                        answer=update.answer,
+                        data={
+                            **update.data,
+                            "run_id": trace.id,
+                            "conversation_id": conversation_id,
+                            "user_message_id": exchange.user_message.id,
+                            "assistant_message_id": exchange.assistant_message.id,
+                        },
+                    )
+                else:
+                    yield update
+
+
 async def diagnose_in_conversation(
     session: AsyncSession,
     conversation: Conversation,
@@ -43,16 +112,39 @@ async def diagnose_in_conversation(
     reranker_provider: RerankerProvider,
     retrieval_mode: RetrievalMode,
     rerank: bool,
+    mode: str = "rag",
 ) -> ConversationExchange:
     """使用近期历史增强检索和生成，并原子保存一轮用户/助手消息。"""
     if conversation.knowledge_base_id is None:
         raise ValueError("会话关联的知识库已被删除")
 
-    context = await prepare_conversation_context(
-        session,
-        conversation,
-        question,
-    )
+    if mode == "agent":
+        exchange = None
+        async with aclosing(
+            stream_agent_conversation(
+                session,
+                conversation,
+                question=question,
+                embedding_provider=embedding_provider,
+                sparse_embedding_provider=sparse_embedding_provider,
+                vector_store=vector_store,
+                llm_provider=llm_provider,
+                reranker_provider=reranker_provider,
+            )
+        ) as updates:
+            async for update in updates:
+                if update.answer is not None:
+                    exchange = ConversationExchange(
+                        user_message=await session.get(Message, update.data["user_message_id"]),
+                        assistant_message=await session.get(
+                            Message, update.data["assistant_message_id"]
+                        ),
+                        rag_answer=update.answer,
+                    )
+        if exchange is None:
+            raise RuntimeError("Agent 未返回完整结果")
+        return exchange
+    context = await prepare_conversation_context(session, conversation, question)
     rag_answer = await answer_with_knowledge_base(
         session,
         knowledge_base_id=conversation.knowledge_base_id,
@@ -108,6 +200,8 @@ async def persist_conversation_answer(
     *,
     question: str,
     rag_answer: RagAnswer,
+    agent_run_id: UUID | None = None,
+    run_elapsed_ms: int | None = None,
 ) -> ConversationExchange:
     """完整回答生成后，原子保存用户消息、助手消息和引用。"""
     citations = [serialize_source(source) for source in rag_answer.sources]
@@ -117,6 +211,8 @@ async def persist_conversation_answer(
         question=question,
         answer=rag_answer.answer,
         citations=citations,
+        agent_run_id=agent_run_id,
+        run_elapsed_ms=run_elapsed_ms,
     )
     return ConversationExchange(
         user_message=user_message,

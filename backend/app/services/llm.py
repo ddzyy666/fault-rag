@@ -2,7 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -31,6 +31,14 @@ class LLMGeneration:
 
 
 @dataclass(frozen=True, slots=True)
+class LLMToolTurn:
+    """完整 assistant 消息，包含必须原样回传的工具调用及服务商扩展字段。"""
+
+    message: dict[str, Any]
+    usage: LLMUsage
+
+
+@dataclass(frozen=True, slots=True)
 class LLMChatMessage:
     """发送给兼容接口的一条历史对话消息。"""
 
@@ -51,6 +59,12 @@ class LLMProvider(Protocol):
 
     @property
     def model_name(self) -> str: ...
+
+    async def tool_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMToolTurn: ...
 
     async def generate(
         self,
@@ -145,6 +159,69 @@ class OpenAICompatibleLLMProvider:
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise LLMError("大模型响应格式不正确") from exc
         return LLMGeneration(content=content.strip(), usage=usage)
+
+    async def tool_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMToolTurn:
+        self._validate_configuration()
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds,
+                transport=self._transport,
+            ) as client:
+                response = await client.post(
+                    self.endpoint,
+                    headers=self._headers(),
+                    json={
+                        "model": self.model_name,
+                        "messages": messages,
+                        "tools": tools,
+                        "tool_choice": "auto",
+                        "temperature": self._temperature,
+                        "max_tokens": self._max_tokens,
+                        "stream": False,
+                    },
+                )
+                response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise LLMError("大模型工具决策请求超时") from exc
+        except httpx.HTTPStatusError as exc:
+            raise _http_status_error(exc.response.status_code) from exc
+        except httpx.HTTPError as exc:
+            raise LLMError("无法连接大模型服务") from exc
+        try:
+            payload = response.json()
+            choice = payload["choices"][0]
+            message = choice["message"]
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                raise ValueError("invalid assistant")
+            if choice.get("finish_reason") in {"length", "content_filter"}:
+                raise ValueError("incomplete response")
+            calls = message.get("tool_calls") or []
+            if not isinstance(calls, list):
+                raise ValueError("invalid calls")
+            ids = set()
+            for call in calls:
+                call_id = call["id"]
+                if not isinstance(call_id, str) or not call_id or call_id in ids:
+                    raise ValueError("invalid call id")
+                ids.add(call_id)
+                if (
+                    call["type"] != "function"
+                    or not isinstance(call["function"]["name"], str)
+                    or not isinstance(call["function"]["arguments"], str)
+                ):
+                    raise ValueError("invalid function")
+            content = message.get("content")
+            if not calls and (not isinstance(content, str) or not content.strip()):
+                raise ValueError("empty answer")
+            return LLMToolTurn(
+                message=message, usage=_parse_usage(payload.get("usage")) or LLMUsage()
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
+            raise LLMError("大模型工具响应格式不正确或回答未完整结束") from exc
 
     async def stream(
         self,

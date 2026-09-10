@@ -2,10 +2,11 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
+from app.models.agent_run import AgentRun
 from app.models.conversation import Conversation, Message, MessageRole
 
 
@@ -117,6 +118,8 @@ async def save_exchange(
     question: str,
     answer: str,
     citations: list[dict[str, Any]],
+    agent_run_id: UUID | None = None,
+    run_elapsed_ms: int | None = None,
 ) -> tuple[Message, Message]:
     user_time = utc_now()
     assistant_time = user_time + timedelta(microseconds=1)
@@ -140,6 +143,25 @@ async def save_exchange(
         conversation.title = make_conversation_title(question)
     conversation.updated_at = assistant_time
     session.add_all([user_message, assistant_message])
+    if agent_run_id is not None:
+        await session.flush()
+        linked = await session.execute(
+            update(AgentRun)
+            .where(
+                AgentRun.id == agent_run_id,
+                AgentRun.conversation_id == conversation.id,
+                AgentRun.status == "running",
+            )
+            .values(
+                assistant_message_id=assistant_message.id,
+                status="succeeded",
+                phase="completed",
+                finished_at=utc_now(),
+                elapsed_ms=run_elapsed_ms,
+            )
+        )
+        if linked.rowcount != 1:
+            raise RuntimeError("执行记录已结束，不能保存过期回答")
     await session.commit()
     await session.refresh(user_message)
     await session.refresh(assistant_message)
